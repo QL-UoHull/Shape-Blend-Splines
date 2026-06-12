@@ -1,0 +1,6 @@
+numpy>=1.21
+matplotlib>=3.4
+ipywidgets>=7.6
+notebook>=6.4
+jupyterlab>=3.0
+scipy>=1.7
