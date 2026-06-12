@@ -1,0 +1,37 @@
+cff-version: 1.2.0
+message: "If you use this repository, please cite the software and the original Shape Blend Splines paper."
+title: "Shape-Blend-Splines"
+version: "0.1.0"
+type: software
+authors:
+  - family-names: "Li"
+    given-names: "Q."
+license: "MIT"
+repository-code: "https://github.com/QL-UoHull/Shape-Blend-Splines"
+url: "https://github.com/QL-UoHull/Shape-Blend-Splines"
+abstract: >-
+  Python toolkit for experimenting with Shape Blend Splines, global weighted
+  shape blending, interactive Jupyter/Colab demos, and control-point driven
+  spline curves.
+keywords:
+  - shape blend splines
+  - shape blending
+  - spline
+  - geometric modeling
+  - computer-aided design
+  - partition of unity
+  - jupyter
+  - colab
+preferred-citation:
+  type: article
+  authors:
+    - family-names: "Li"
+      given-names: "Q."
+  title: "Shape Blend Splines"
+  journal: "Computer-Aided Design"
+  year: 2011
+  volume: 43
+  issue: 8
+  start: 990
+  end: 1001
+  doi: "10.1016/j.cad.2011.01.006"

@@ -12,6 +12,16 @@
 
 > **A Python implementation of the Shape Blend Spline (SBS) technique** — a framework for blending simple parametric shapes into complex planar geometries while selectively preserving key features, using shape-preserving partition-of-unity basis functions.
 
+## Quick links
+
+- [Notebook / Colab demo](#notebook--colab)
+- [Installation](#installation)
+- [Quickstart](#quickstart)
+- [Global weighted blending vs locality-aware SBS](#global-weighted-blending-vs-locality-aware-sbs)
+- [Running the scripted demo](#running-the-scripted-demo)
+- [Running the tests](#running-the-tests)
+- [Citation](#citation)
+
 ---
 
 ## Paper
@@ -23,7 +33,7 @@ This repository implements the spline technique described in:
 > DOI: [10.1016/j.cad.2011.01.006](https://doi.org/10.1016/j.cad.2011.01.006)  
 > PII: S0010-4485(11)00008-X
 
-### Research note / transparency
+## Exact paper reproduction vs approximation
 
 The full text of the paper was not directly accessible during development of this open-source implementation. The framework and equations presented here are based on:
 
@@ -32,6 +42,11 @@ The full text of the paper was not directly accessible during development of thi
 - The raised-cosine bump family of shape-preserving basis functions, which matches the described locality control mechanism.
 
 **Claims about exact reproduction of the paper's formulae are not made.** Specific choices (e.g. the locality kernel form, normalisation scheme, and shape catalogue) are documented assumptions. Corrections and contributions from the author or other domain experts are very welcome.
+
+In this repository:
+
+- `ShapeBlendSpline(...)` and `blend_shape_series(...)` are the locality-aware SBS-style APIs.
+- `ShapeBlender(...)`, `blend_two_shapes(...)`, and `shape_morph(...)` provide simpler **global weighted blending** helpers for interactive exploration and morphing.
 
 ---
 
@@ -69,8 +84,12 @@ Shape-Blend-Splines/
 │   └── basic_demo.py           # Standalone scripted demo (saves PNG files)
 ├── tests/
 │   └── test_smoke.py           # Pytest smoke tests
+├── .github/workflows/
+│   └── ci.yml                  # Lightweight GitHub Actions test workflow
+├── CITATION.cff                # GitHub citation metadata
+├── pyproject.toml              # Modern Python packaging metadata
 ├── requirements.txt
-├── setup.py
+├── setup.py                    # Compatibility shim for existing packaging
 ├── LICENSE                     # MIT
 └── README.md
 ```
@@ -122,6 +141,8 @@ plt.title('Circle–Star blend  (β = 0.5)')
 plt.show()
 ```
 
+This two-shape helper performs a **global weighted blend**. It does **not** use the SBS locality parameter `α`.
+
 **Five-shape blend with locality control:**
 
 ```python
@@ -155,6 +176,21 @@ pts  = sbs.evaluate(np.linspace(0, 1, 400))
 
 ---
 
+## Global weighted blending vs locality-aware SBS
+
+Use the API that matches the behavior you want:
+
+| Use case | Recommended API | Notes |
+|----------|------------------|-------|
+| Blend two shapes with a single global mix factor β | `blend_two_shapes(...)` or `ShapeBlender(...)` | Uniform weighted blend across the whole parameter domain |
+| Blend a sequence of shapes with spatially varying partition-of-unity weights | `ShapeBlendSpline(...)` or `blend_shape_series(...)` | Uses locality parameter α |
+| Morph between two shapes across several frames | `shape_morph(...)` | Repeats the global weighted two-shape blend |
+| Build a smooth curve from control points | `ControlPointSpline(...)` | Uses the SBS locality parameter α |
+
+The `locality` parameter is meaningful for the SBS-based APIs above. It is retained in some older helper signatures for backwards compatibility, but it does not affect global weighted blending.
+
+---
+
 ## Notebook / Colab
 
 An interactive Jupyter notebook is provided in `notebooks/`.
@@ -171,8 +207,8 @@ jupyter lab notebooks/interactive_shape_blend_demo.ipynb
 
 The notebook covers:
 
-1. **Two-shape blend** with interactive β slider
-2. **Multi-shape SBS** with per-shape weight sliders
+1. **Two-shape global weighted blend** with interactive β slider
+2. **Multi-shape SBS** with interactive locality / weight controls
 3. **Blend weight visualisation** (partition-of-unity demonstration)
 4. **Shape morphing** sequence (β = 0 → 1)
 5. **Free-form control-point curve** with interactive point editor
@@ -186,7 +222,15 @@ The notebook covers:
 python examples/basic_demo.py
 ```
 
-This generates five PNG demonstration figures in the `examples/` directory (no GUI required).
+This generates five PNG demonstration figures in the `examples/` directory (no GUI required):
+
+- `demo_blend_circle_to_star.png`
+- `demo_blend_series.png`
+- `demo_morph.png`
+- `demo_weights.png`
+- `demo_control_points.png`
+
+If you want fresh outputs for documentation, rerun the script locally and review the generated files before sharing them.
 
 ---
 
@@ -206,9 +250,9 @@ pytest tests/ -v
 | `ShapeBlendSpline(shapes, locality=α)` | Main SBS: blend *k* shapes with PU weights |
 | `ControlPointSpline(pts, locality=α)` | Smooth curve through control points |
 | `ShapeBlender(shapes, weights=[…])` | Uniform weighted blend (no spatial localisation) |
-| `blend_two_shapes(S_a, S_b, blend=β)` | Two-shape blend (β=0 → S_a, β=1 → S_b) |
+| `blend_two_shapes(S_a, S_b, blend=β)` | Two-shape global weighted blend (β=0 → S_a, β=1 → S_b) |
 | `blend_shape_series(shapes, locality=α)` | Blend ordered sequence of shapes |
-| `shape_morph(S_a, S_b, n_frames=N)` | Compute morphing frames from S_a to S_b |
+| `shape_morph(S_a, S_b, n_frames=N)` | Compute global weighted morphing frames from S_a to S_b |
 
 ### Built-in shapes (`shape_blend_splines.shapes`)
 
@@ -228,7 +272,7 @@ pytest tests/ -v
 
 | Parameter | Effect |
 |-----------|--------|
-| `locality` (α ≥ 0) | **Shape-preservation strength.** α ≈ 0.5 → global blending; α = 1 → smooth raised-cosine; α ≥ 3 → strong local preservation |
+| `locality` (α ≥ 0) | **Shape-preservation strength** for `ShapeBlendSpline`, `blend_shape_series`, and `ControlPointSpline`. α ≈ 0.5 → diffuse blending; α = 1 → smooth raised-cosine; α ≥ 3 → strong local preservation |
 | `blend` (β ∈ [0,1]) | **Interpolation** between two shapes |
 | `t_centers` | **Centre parameters** of each shape in [0,1] |
 | `blend_width` (σ) | **Support width** of each weight function |
@@ -237,7 +281,7 @@ pytest tests/ -v
 
 ## Citation
 
-If you use this software in your research, please cite the original paper:
+GitHub can surface citation metadata directly from [`CITATION.cff`](CITATION.cff). If you use this software in your research, please cite the original paper:
 
 ```bibtex
 @article{li2011shapeblend,

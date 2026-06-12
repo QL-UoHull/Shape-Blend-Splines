@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shape-blend-splines"
+version = "0.1.0"
+description = "Python Shape Blend Splines toolkit for geometric modeling, shape blending, Jupyter demos, and partition-of-unity curves."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+  { name = "Q. Li" },
+]
+keywords = [
+  "shape blend splines",
+  "shape blending",
+  "spline",
+  "geometric modeling",
+  "computer aided design",
+  "partition of unity",
+  "parametric curves",
+  "jupyter",
+  "colab",
+  "morphing",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Scientific/Engineering :: Mathematics",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = [
+  "numpy>=1.21",
+  "matplotlib>=3.4",
+]
+
+[project.optional-dependencies]
+notebook = [
+  "ipywidgets>=7.6",
+  "notebook>=6.4",
+  "jupyterlab>=3.0",
+]
+dev = [
+  "pytest>=7.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/QL-UoHull/Shape-Blend-Splines"
+Repository = "https://github.com/QL-UoHull/Shape-Blend-Splines"
+Issues = "https://github.com/QL-UoHull/Shape-Blend-Splines/issues"
+Notebook = "https://github.com/QL-UoHull/Shape-Blend-Splines/blob/main/notebooks/interactive_shape_blend_demo.ipynb"
+
+[tool.setuptools.packages.find]
+exclude = ["tests", "notebooks", "examples"]

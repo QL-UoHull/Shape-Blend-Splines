@@ -40,7 +40,7 @@ from typing import Callable, Sequence
 import numpy as np
 from numpy.typing import ArrayLike
 
-from .basis import blend_weights, uniform_bspline_weights
+from .basis import blend_weights
 
 
 # ---------------------------------------------------------------------------

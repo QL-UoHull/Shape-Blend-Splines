@@ -12,6 +12,7 @@ Output:
     demo_blend_series.png
     demo_morph.png
     demo_weights.png
+    demo_control_points.png
 """
 
 import sys
@@ -28,8 +29,6 @@ from functools import partial
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from shape_blend_splines import (
-    ShapeBlendSpline,
-    ShapeBlender,
     blend_two_shapes,
     blend_shape_series,
     shape_morph,
@@ -40,35 +39,33 @@ from shape_blend_splines.shapes import (
     superellipse_arc,
     rectangle_arc,
     star_arc,
-    line_segment,
-    from_control_points,
 )
 
 OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 # ===========================================================================
-# Demo 1: Blend a circle into a star at different locality settings
+# Demo 1: Blend a circle into a star at different blend factors
 # ===========================================================================
 def demo_blend_circle_to_star():
     fig, axes = plt.subplots(1, 3, figsize=(14, 4))
     t = np.linspace(0.0, 1.0, 500)
 
-    for ax, alpha in zip(axes, [0.5, 1.0, 3.0]):
-        sbs = blend_two_shapes(circle_arc, star_arc, blend=0.5, locality=alpha)
-        pts = sbs.evaluate(t)
+    for ax, beta in zip(axes, [0.0, 0.5, 1.0]):
+        blender = blend_two_shapes(circle_arc, star_arc, blend=beta)
+        pts = blender.evaluate(t)
         c = np.atleast_2d(circle_arc(t))
         s = np.atleast_2d(star_arc(t))
         ax.plot(c[:, 0], c[:, 1], "--", color="gray", lw=1, alpha=0.5, label="Circle")
         ax.plot(s[:, 0], s[:, 1], ":", color="gray", lw=1, alpha=0.5, label="Star")
-        ax.plot(pts[:, 0], pts[:, 1], color="steelblue", lw=2, label=f"SBS α={alpha}")
+        ax.plot(pts[:, 0], pts[:, 1], color="steelblue", lw=2, label=f"Blend β={beta}")
         ax.set_aspect("equal")
-        ax.set_title(f"Locality α = {alpha}")
+        ax.set_title(f"Blend β = {beta}")
         ax.legend(fontsize=8)
         ax.set_xlabel("x")
         ax.set_ylabel("y")
 
-    fig.suptitle("Demo 1 — Circle ↔ Star blend at different locality values", y=1.02)
+    fig.suptitle("Demo 1 — Circle ↔ Star global weighted blend", y=1.02)
     fig.tight_layout()
     path = os.path.join(OUTPUT_DIR, "demo_blend_circle_to_star.png")
     fig.savefig(path, dpi=120, bbox_inches="tight")
@@ -122,8 +119,7 @@ def demo_blend_series():
 # ===========================================================================
 def demo_morph():
     n_frames = 6
-    frames = shape_morph(circle_arc, star_arc, n_frames=n_frames,
-                         locality=2.5, n_points=400)
+    frames = shape_morph(circle_arc, star_arc, n_frames=n_frames, n_points=400)
 
     fig, axes = plt.subplots(1, n_frames, figsize=(3 * n_frames, 3))
     betas = np.linspace(0, 1, n_frames)
