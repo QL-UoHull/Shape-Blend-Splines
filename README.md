@@ -14,6 +14,10 @@
 
 This repository presents an open implementation of the **Shape Blend Spline (SBS)** framework for the construction of complex planar curves from simpler constituent parametric shapes. The software is intended for research, teaching, and computational experimentation in **geometric modelling**, **curve design**, and **shape blending**.
 
+A central strength of the SBS framework is that it provides a flexible mechanism for constructing smooth blended geometries with strong local shape control **without requiring rational spline basis functions**. In this respect, the technique offers a conceptually attractive alternative to NURBS-style rational formulations for a broad class of shape design tasks.
+
+The framework also emphasises the use of **partition-of-unity basis functions that are piecewise polynomial over general two-dimensional partitions**, rather than being restricted to rectangular partition structures alone. This makes the underlying idea especially relevant to geometric modelling settings in which locality, adaptivity, and partition flexibility are important.
+
 The package supports:
 - multi-shape blending with locality control,
 - global weighted interpolation between shapes,
@@ -27,7 +31,9 @@ The package supports:
 
 Shape Blend Splines provide a mechanism for combining multiple constituent shapes into a single smooth parametric curve while selectively preserving local geometric characteristics. The central principle is the use of **shape-preserving partition-of-unity basis functions**, which allow different shapes to dominate distinct regions of the parameter domain while maintaining smooth global continuity.
 
-In practical terms, this enables the construction of blended curves that interpolate between geometric identities without reducing the result to a purely uniform global average.
+In practical terms, this enables the construction of blended curves that interpolate between geometric identities without reducing the result to a purely uniform global average. An important conceptual advantage is that the method seeks to achieve expressive spline-based geometric design **without depending on rational basis constructions**, while still retaining local control and smoothness properties that are highly valuable in CAD and geometric modelling workflows.
+
+More broadly, the partition-of-unity viewpoint is not tied to a single rectangular layout. The basis construction is naturally aligned with **piecewise-polynomial blending over more general two-dimensional partitions**, which is one of the features that makes the framework mathematically interesting as well as practically useful.
 
 This repository provides a Python implementation suitable for:
 - exploratory computational geometry,
@@ -64,6 +70,8 @@ where:
 | $\alpha$ | a locality parameter controlling the concentration of influence |
 
 As the locality parameter increases, the influence of each constituent shape becomes more concentrated near its associated region of the parameter domain. Consequently, the resulting blended curve exhibits stronger local shape preservation together with smooth transitions between neighbouring shape contributions.
+
+From a modelling perspective, the significance of this formulation is that rich blended geometry can be obtained through **shape-preserving piecewise-polynomial basis design**, avoiding the need to rely exclusively on rational spline mechanisms for expressive shape control.
 
 ---
 
