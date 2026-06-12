@@ -12,14 +12,21 @@ setup(
     name="shape-blend-splines",
     version="0.1.0",
     description=(
-        "A Python implementation of the Shape Blend Spline technique: "
-        "blending simple parametric shapes into complex geometries using "
-        "shape-preserving partition-of-unity basis functions."
+        "Python Shape Blend Splines toolkit for geometric modeling, "
+        "shape blending, Jupyter demos, and partition-of-unity curves."
     ),
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="Q. Li",
     url="https://github.com/QL-UoHull/Shape-Blend-Splines",
+    project_urls={
+        "Source": "https://github.com/QL-UoHull/Shape-Blend-Splines",
+        "Issues": "https://github.com/QL-UoHull/Shape-Blend-Splines/issues",
+        "Notebook": (
+            "https://github.com/QL-UoHull/Shape-Blend-Splines/blob/main/"
+            "notebooks/interactive_shape_blend_demo.ipynb"
+        ),
+    },
     license="MIT",
     packages=find_packages(exclude=["tests", "notebooks", "examples"]),
     python_requires=">=3.8",
@@ -36,12 +43,15 @@ setup(
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3 :: Only",
         "Topic :: Scientific/Engineering :: Mathematics",
+        "Topic :: Scientific/Engineering :: Information Analysis",
         "Topic :: Scientific/Engineering :: Visualization",
     ],
     keywords=(
-        "spline shape-blending parametric-shapes geometric-modeling CAD "
-        "B-spline partition-of-unity shape-preserving basis-functions "
-        "curve-design morphing interpolation"
+        "shape blend splines spline shape-blending parametric-shapes "
+        "geometric-modeling CAD computer-aided-design partition-of-unity "
+        "shape-preserving basis-functions curve-design morphing "
+        "interpolation jupyter colab"
     ),
 )

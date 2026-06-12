@@ -4,9 +4,9 @@ Higher-level shape blending utilities.
 This module builds on :class:`~shape_blend_splines.curve.ShapeBlendSpline` to
 provide convenience helpers for common blending tasks:
 
-* :func:`blend_two_shapes`   — morph smoothly from one shape to another.
+* :func:`blend_two_shapes`   — globally blend from one shape to another.
 * :func:`blend_shape_series` — blend along an ordered sequence of shapes.
-* :func:`shape_morph`        — compute a series of intermediate blended curves.
+* :func:`shape_morph`        — compute a series of intermediate global blends.
 * :class:`ShapeBlender`      — interactive / programmatic multi-shape blender.
 """
 
@@ -14,12 +14,13 @@ from __future__ import annotations
 
 from functools import partial
 from typing import Callable, Sequence
+import warnings
 
 import numpy as np
 from numpy.typing import ArrayLike
 
 from .curve import ShapeBlendSpline
-from .shapes import line_segment, circle_arc, ellipse_arc
+from .shapes import circle_arc, ellipse_arc
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +34,7 @@ def blend_two_shapes(
     locality: float = 1.0,
 ) -> "ShapeBlender":
     """
-    Create a :class:`ShapeBlender` that blends between *shape_a* and *shape_b*.
+    Create a global weighted :class:`ShapeBlender` for *shape_a* and *shape_b*.
 
     The blended curve is:
 
@@ -55,8 +56,8 @@ def blend_two_shapes(
         * β = 1 → result = *shape_b* exactly.
         * β = 0.5 → equal mix (default).
     locality:
-        Locality parameter α (reserved for future spatial blending;
-        not used by :class:`ShapeBlender` which applies uniform weights).
+        Retained for backwards compatibility. Global weighted blending does not
+        use the SBS locality parameter α.
 
     Returns
     -------
@@ -66,9 +67,16 @@ def blend_two_shapes(
     --------
     >>> from shape_blend_splines.shapes import circle_arc, ellipse_arc
     >>> from shape_blend_splines.blend import blend_two_shapes
-    >>> sbs = blend_two_shapes(circle_arc, ellipse_arc, blend=0.3)
-    >>> pts = sbs.evaluate(np.linspace(0, 1, 100))
+    >>> blender = blend_two_shapes(circle_arc, ellipse_arc, blend=0.3)
+    >>> pts = blender.evaluate(np.linspace(0, 1, 100))
     """
+    if locality != 1.0:
+        warnings.warn(
+            "blend_two_shapes() performs global weighted blending; "
+            "the locality parameter is ignored.",
+            UserWarning,
+            stacklevel=2,
+        )
     beta = float(np.clip(blend, 0.0, 1.0))
     return ShapeBlender([shape_a, shape_b], weights=[1.0 - beta, beta])
 
@@ -130,7 +138,8 @@ def shape_morph(
     n_frames:
         Number of frames (including start and end).
     locality:
-        Locality parameter α used for each intermediate blend.
+        Retained for backwards compatibility. Intermediate frames are computed
+        with global weighted blending, so α is ignored.
     n_points:
         Number of points per curve.
 
@@ -140,9 +149,16 @@ def shape_morph(
         Intermediate blended curves, from β = 0 (shape_a) to β = 1 (shape_b).
     """
     t = np.linspace(0.0, 1.0, n_points)
+    if locality != 2.0:
+        warnings.warn(
+            "shape_morph() uses global weighted blends between shapes; "
+            "the locality parameter is ignored.",
+            UserWarning,
+            stacklevel=2,
+        )
     frames = []
     for beta in np.linspace(0.0, 1.0, n_frames):
-        sbs = blend_two_shapes(shape_a, shape_b, blend=beta, locality=locality)
+        sbs = blend_two_shapes(shape_a, shape_b, blend=beta)
         frames.append(sbs.evaluate(t))
     return frames
 
@@ -153,7 +169,7 @@ def shape_morph(
 
 class ShapeBlender:
     """
-    Multi-shape blender with adjustable per-shape weights and locality.
+    Multi-shape blender with adjustable per-shape weights.
 
     Unlike :class:`~shape_blend_splines.curve.ShapeBlendSpline`, which uses
     automatic centre-based weights, :class:`ShapeBlender` lets the caller
@@ -275,7 +291,7 @@ def circle_to_ellipse(
     a: float = 1.5,
     b: float = 0.8,
     locality: float = 1.0,
-) -> ShapeBlendSpline:
+) -> ShapeBlender:
     """
     Convenience: blend a circle and an ellipse.
 
@@ -290,11 +306,12 @@ def circle_to_ellipse(
     a, b:
         Ellipse semi-axes.
     locality:
-        Locality parameter α.
+        Retained for backwards compatibility. This helper delegates to
+        :func:`blend_two_shapes`, so α is ignored.
 
     Returns
     -------
-    ShapeBlendSpline
+    ShapeBlender
     """
     s_circle = partial(circle_arc, center=center, radius=radius)
     s_ellipse = partial(ellipse_arc, center=center, a=a, b=b)

@@ -228,14 +228,24 @@ class TestBlend:
         assert pts.shape == (80, 2)
 
     def test_blend_zero_gives_first_shape(self):
-        """blend=0 → essentially the first shape (large locality)."""
+        """blend=0 → exactly the first shape in the global weighted blend."""
         from shape_blend_splines.blend import blend_two_shapes
         from shape_blend_splines.shapes import circle_arc, ellipse_arc
-        sbs = blend_two_shapes(circle_arc, ellipse_arc, blend=0.0, locality=20.0)
+        sbs = blend_two_shapes(circle_arc, ellipse_arc, blend=0.0)
         t = np.linspace(0.0, 1.0, 100)
         pts_blend = sbs.evaluate(t)
         pts_circle = circle_arc(t)
-        assert np.allclose(pts_blend, pts_circle, atol=0.05)
+        assert np.allclose(pts_blend, pts_circle, atol=1e-10)
+
+    def test_blend_two_shapes_warns_when_locality_is_provided(self):
+        from shape_blend_splines.blend import blend_two_shapes
+        from shape_blend_splines.shapes import circle_arc, ellipse_arc
+
+        with pytest.warns(UserWarning, match="locality parameter is ignored"):
+            blender = blend_two_shapes(circle_arc, ellipse_arc, blend=0.25, locality=3.0)
+
+        pts = blender.evaluate(np.linspace(0, 1, 80))
+        assert pts.shape == (80, 2)
 
     def test_blend_shape_series(self):
         from shape_blend_splines.blend import blend_shape_series
@@ -251,6 +261,15 @@ class TestBlend:
         assert len(frames) == 4
         for f in frames:
             assert f.shape == (50, 2)
+
+    def test_shape_morph_warns_when_locality_is_provided(self):
+        from shape_blend_splines.blend import shape_morph
+        from shape_blend_splines.shapes import circle_arc, star_arc
+
+        with pytest.warns(UserWarning, match="locality parameter is ignored"):
+            frames = shape_morph(circle_arc, star_arc, n_frames=3, locality=3.0, n_points=30)
+
+        assert len(frames) == 3
 
     def test_shape_blender_weights_sum_to_one(self):
         from shape_blend_splines.blend import ShapeBlender
