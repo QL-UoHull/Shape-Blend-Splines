@@ -12,11 +12,11 @@
 
 > **Shape-Blend-Splines** is a Python research software package for locality-aware blending of parametric shapes using shape-preserving spline basis functions.
 
-This repository presents an open implementation of the **Shape Blend Spline (SBS)** framework for the construction of complex planar curves from simpler constituent parametric shapes. The software is intended for research, teaching, and computational experimentation in **geometric modelling**, **curve design**, and **shape blending**.
+This repository presents an open implementation of the **Shape Blend Spline (SBS)** framework for the construction of complex planar curves from simpler constituent parametric shapes. The software is intended for research, teaching, visual experimentation, and computational prototyping in geometric modelling and spline-based shape design.
 
-A central strength of the SBS framework is that it provides a flexible mechanism for constructing smooth blended geometries with strong local shape control **without requiring rational spline basis functions**. In this respect, the technique offers a conceptually attractive alternative to NURBS-style rational formulations for a broad class of shape design tasks.
+A central strength of the SBS framework is that it provides a flexible mechanism for constructing smooth blended geometries with strong local shape control **without requiring rational spline basis functions or classical tensor-product spline constructions**.
 
-The framework also emphasises the use of **partition-of-unity basis functions that are piecewise polynomial over general two-dimensional partitions**, rather than being restricted to rectangular partition structures alone. This makes the underlying idea especially relevant to geometric modelling settings in which locality, adaptivity, and partition flexibility are important.
+The framework also emphasises the use of **partition-of-unity basis functions that are piecewise polynomial over general two-dimensional partitions**, rather than being restricted to rectangular parameter domains.
 
 The package supports:
 - multi-shape blending with locality control,
@@ -29,11 +29,11 @@ The package supports:
 
 ## Scientific context
 
-Shape Blend Splines provide a mechanism for combining multiple constituent shapes into a single smooth parametric curve while selectively preserving local geometric characteristics. The central principle is the use of **shape-preserving partition-of-unity basis functions**, which allow different shapes to dominate distinct regions of the parameter domain while maintaining smooth global continuity.
+Shape Blend Splines provide a mechanism for combining multiple constituent shapes into a single smooth parametric curve while selectively preserving local geometric characteristics. The central principle is that each constituent shape contributes through a partition-of-unity weight, and the locality of that contribution can be controlled continuously.
 
-In practical terms, this enables the construction of blended curves that interpolate between geometric identities without reducing the result to a purely uniform global average. An important conceptual advantage is that the method seeks to achieve expressive spline-based geometric design **without depending on rational basis constructions**, while still retaining local control and smoothness properties that are highly valuable in CAD and geometric modelling workflows.
+In practical terms, this enables the construction of blended curves that interpolate between geometric identities without reducing the result to a purely uniform global average. An important consequence is that individual features can remain recognisable over subregions of the parameter domain even while the curve as a whole is blended.
 
-More broadly, the partition-of-unity viewpoint is not tied to a single rectangular layout. The basis construction is naturally aligned with **piecewise-polynomial blending over more general two-dimensional partitions**, which is one of the features that makes the framework mathematically interesting as well as practically useful.
+More broadly, the partition-of-unity viewpoint is not tied to a single rectangular layout. The basis construction is naturally aligned with **piecewise-polynomial blending over more general two-dimensional partitions**, which is one of the conceptual distinctions highlighted in the original work.
 
 This repository provides a Python implementation suitable for:
 - exploratory computational geometry,
@@ -69,9 +69,9 @@ where:
 | $W_j(t)$ | a partition-of-unity blending weight satisfying $\sum_j W_j(t)=1$ |
 | $\alpha$ | a locality parameter controlling the concentration of influence |
 
-As the locality parameter increases, the influence of each constituent shape becomes more concentrated near its associated region of the parameter domain. Consequently, the resulting blended curve exhibits stronger local shape preservation together with smooth transitions between neighbouring shape contributions.
+As the locality parameter increases, the influence of each constituent shape becomes more concentrated near its associated region of the parameter domain. Consequently, the resulting blended curve can preserve stronger local geometric identity.
 
-From a modelling perspective, the significance of this formulation is that rich blended geometry can be obtained through **shape-preserving piecewise-polynomial basis design**, avoiding the need to rely exclusively on rational spline mechanisms for expressive shape control.
+From a modelling perspective, the significance of this formulation is that rich blended geometry can be obtained through **shape-preserving piecewise-polynomial basis design**, avoiding the need to encode all detail directly into a single traditional spline representation.
 
 ---
 
@@ -136,7 +136,7 @@ pip install -e .
 ### Optional notebook dependencies
 
 ```bash
-pip install jupyterlab ipywidgets
+pip install jupyterlab notebook ipywidgets
 ```
 
 ### Planned package installation
@@ -254,9 +254,39 @@ An interactive notebook is provided at:
 
 `notebooks/interactive_shape_blend_demo.ipynb`
 
+### Run in Google Colab
+
 Open directly in Google Colab:
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/QL-UoHull/Shape-Blend-Splines/blob/main/notebooks/interactive_shape_blend_demo.ipynb)
+
+Instructions:
+1. Open the notebook in Colab using the badge above.
+2. If prompted, allow Colab a few moments to install the dependencies in the first code cell.
+3. Run the notebook from top to bottom using **Runtime → Run all**.
+4. If you reopen the notebook after updates, use **Runtime → Restart session** and rerun all cells so the latest package version is loaded.
+
+### Run in Jupyter Notebook or JupyterLab
+
+After cloning the repository and installing dependencies, start Jupyter locally:
+
+```bash
+pip install jupyterlab notebook ipywidgets
+jupyter notebook notebooks/interactive_shape_blend_demo.ipynb
+```
+
+Or with JupyterLab:
+
+```bash
+jupyter lab notebooks/interactive_shape_blend_demo.ipynb
+```
+
+Instructions:
+1. Clone this repository and install the package with `pip install -e .`.
+2. Launch either Jupyter Notebook or JupyterLab using one of the commands above.
+3. Open `notebooks/interactive_shape_blend_demo.ipynb`.
+4. Run the notebook cells from top to bottom.
+5. If you change the package source code while Jupyter is already running, restart the kernel and rerun all cells to pick up the latest local code.
 
 The notebook includes demonstrations of:
 1. two-shape global interpolation,
@@ -265,13 +295,6 @@ The notebook includes demonstrations of:
 4. morphing sequences,
 5. control-point-based curves,
 6. custom user-defined parametric shapes.
-
-To run locally:
-
-```bash
-pip install jupyterlab ipywidgets
-jupyter lab notebooks/interactive_shape_blend_demo.ipynb
-```
 
 ---
 
@@ -302,9 +325,9 @@ pytest tests/ -v
 
 This repository should be understood as an **open research implementation** of the Shape Blend Spline concept.
 
-The current codebase is designed to reflect the mathematical intent and modelling philosophy of the referenced work while also providing a practical, inspectable, and extensible Python implementation. At present, the implementation is best described as a research-oriented realisation of the SBS framework rather than a claim of exact line-by-line reconstruction of every formula or numerical choice in the original publication.
+The current codebase is designed to reflect the mathematical intent and modelling philosophy of the referenced work while also providing a practical, inspectable, and extensible Python implementation.
 
-Accordingly, some implementation details—such as specific locality kernels, normalisation strategies, or shape catalogue design—represent explicit engineering and modelling choices made for clarity, usability, and extensibility.
+Accordingly, some implementation details—such as specific locality kernels, normalisation strategies, or shape catalogue design—represent explicit engineering and modelling choices made for clarity, portability, and usability.
 
 Contributions that improve verification against the published method, extend the mathematical framework, or strengthen experimental validation are particularly welcome.
 
