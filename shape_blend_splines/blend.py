@@ -2,12 +2,11 @@
 Higher-level shape blending utilities.
 
 This module builds on :class:`~shape_blend_splines.curve.ShapeBlendSpline` to
-provide convenience helpers for common blending tasks:
+provide convenience helpers for common blending tasks.
 
-* :func:`blend_two_shapes`   — globally blend from one shape to another.
-* :func:`blend_shape_series` — blend along an ordered sequence of shapes.
-* :func:`shape_morph`        — compute a series of intermediate global blends.
-* :class:`ShapeBlender`      — interactive / programmatic multi-shape blender.
+The functions in this module are intentionally lightweight.  They are useful
+for simple global weighted blends and educational comparisons, whereas the core
+SBS behaviour lives in :mod:`shape_blend_splines.curve`.
 """
 
 from __future__ import annotations

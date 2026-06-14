@@ -85,11 +85,30 @@ def sbs_basis(
 # Partition-of-unity blend weights
 # ---------------------------------------------------------------------------
 
+def _circular_midpoint(a: float, b: float, period: float) -> float:
+    """Midpoint on a periodic domain, returned modulo *period*."""
+    a = float(a)
+    b = float(b)
+    if b < a:
+        b += period
+    return (0.5 * (a + b)) % period
+
+
+def _circular_distance(values: np.ndarray, centers: np.ndarray, period: float) -> np.ndarray:
+    """Pairwise circular distances for periodic nearest-centre fallback."""
+    delta = np.abs(values[:, np.newaxis] - centers[np.newaxis, :])
+    return np.minimum(delta, period - delta)
+
+
 def blend_weights(
     t: ArrayLike,
     centers: ArrayLike,
     locality: float = 1.0,
     width: float | None = None,
+    *,
+    periodic: bool = False,
+    period: float = 1.0,
+    order: int = 2,
 ) -> np.ndarray:
     """
     Compute SBS partition-of-unity weights for all shape centres.
@@ -117,6 +136,13 @@ def blend_weights(
     width:
         Optional base transition half-width for each endpoint step.
         If omitted, each interval uses half of its midpoint span.
+    periodic:
+        If True, treat the parameter domain as periodic with wrap-around at
+        ``period``. This is appropriate for closed curves.
+    period:
+        Period length used when ``periodic=True``.
+    order:
+        Smooth-step polynomial order used in the SBS basis.
 
     Returns
     -------
@@ -142,27 +168,59 @@ def blend_weights(
     if np.any(np.diff(centers) <= 0):
         raise ValueError("centers must be strictly increasing.")
     locality = float(locality)
+    order = int(order)
     if locality < 0:
         raise ValueError("locality must be non-negative.")
     if locality == 0:
         return np.full((k, len(t)), 1.0 / k, dtype=float)
 
-    midpoints = 0.5 * (centers[:-1] + centers[1:])
-    bounds = np.empty(k + 1, dtype=float)
-    bounds[1:-1] = midpoints
-    bounds[0] = centers[0] - (midpoints[0] - centers[0])
-    bounds[-1] = centers[-1] + (centers[-1] - midpoints[-1])
-
     raw = np.zeros((k, len(t)), dtype=float)
-    for j in range(k):
-        a = bounds[j]
-        b = bounds[j + 1]
-        if width is None:
-            base_half_width = 0.5 * (b - a)
-        else:
-            base_half_width = float(width)
-        half_width = max(base_half_width / locality, 1e-12)
-        raw[j] = sbs_basis(t, a, b, half_width=half_width, order=2)
+    if periodic:
+        period = float(period)
+        if period <= 0:
+            raise ValueError("period must be positive when periodic=True.")
+        t_periodic = np.mod(t, period)
+        centers_periodic = np.mod(centers, period)
+        if np.any(np.diff(centers_periodic) <= 0):
+            raise ValueError(
+                "centers must be strictly increasing within one period when periodic=True."
+            )
+
+        for j in range(k):
+            c_prev = centers_periodic[(j - 1) % k]
+            c_curr = centers_periodic[j]
+            c_next = centers_periodic[(j + 1) % k]
+
+            left = _circular_midpoint(c_prev, c_curr, period=period)
+            right = _circular_midpoint(c_curr, c_next, period=period)
+
+            t_local = t_periodic.copy()
+            if right <= left:
+                right += period
+                t_local = np.where(t_local < left, t_local + period, t_local)
+
+            if width is None:
+                base_half_width = 0.5 * (right - left)
+            else:
+                base_half_width = float(width)
+            half_width = max(base_half_width / locality, 1e-12)
+            raw[j] = sbs_basis(t_local, left, right, half_width=half_width, order=order)
+    else:
+        midpoints = 0.5 * (centers[:-1] + centers[1:])
+        bounds = np.empty(k + 1, dtype=float)
+        bounds[1:-1] = midpoints
+        bounds[0] = centers[0] - (midpoints[0] - centers[0])
+        bounds[-1] = centers[-1] + (centers[-1] - midpoints[-1])
+
+        for j in range(k):
+            a = bounds[j]
+            b = bounds[j + 1]
+            if width is None:
+                base_half_width = 0.5 * (b - a)
+            else:
+                base_half_width = float(width)
+            half_width = max(base_half_width / locality, 1e-12)
+            raw[j] = sbs_basis(t, a, b, half_width=half_width, order=order)
 
     # Normalise column-wise (partition of unity).
     # If ALL kernels vanish at a parameter value (can happen at domain
@@ -173,7 +231,10 @@ def blend_weights(
     zero_mask = total < 1e-14
     if np.any(zero_mask):
         t_zero = t[zero_mask]
-        dist = np.abs(t_zero[:, np.newaxis] - centers[np.newaxis, :])  # (n0, k)
+        if periodic:
+            dist = _circular_distance(np.mod(t_zero, period), centers_periodic, period)
+        else:
+            dist = np.abs(t_zero[:, np.newaxis] - centers[np.newaxis, :])  # (n0, k)
         nearest = np.argmin(dist, axis=1)                              # (n0,)
         for pos, nidx in zip(np.where(zero_mask)[0], nearest):
             raw[nidx, pos] = 1.0

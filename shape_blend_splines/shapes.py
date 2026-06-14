@@ -363,9 +363,6 @@ def from_control_points(
     if k < 2:
         raise ValueError("Need at least 2 control points.")
 
-    if closed:
-        pts = np.vstack([pts[-1:], pts, pts[:1]])
-
     # Centripetal Catmull–Rom tangents
     def _tangent(p_prev, p_curr, p_next):
         d0 = np.linalg.norm(p_curr - p_prev)
@@ -374,30 +371,43 @@ def from_control_points(
         d1 = max(d1, 1e-10)
         return (p_next - p_prev) / (d0 + d1) * 2.0
 
-    n_segs = k - 1 if not closed else k
-    n_ctrl = len(pts)
-    tangents = np.zeros_like(pts)
-    for i in range(1, n_ctrl - 1):
-        tangents[i] = _tangent(pts[i - 1], pts[i], pts[i + 1])
-    tangents[0] = tangents[1]
-    tangents[-1] = tangents[-2]
+    if closed:
+        tangents = np.zeros_like(pts)
+        for i in range(k):
+            tangents[i] = _tangent(pts[(i - 1) % k], pts[i], pts[(i + 1) % k])
 
-    # Map global t to segment index and local parameter
-    n_segs_actual = n_ctrl - 1
-    seg_t = t * n_segs_actual
-    seg_idx = np.clip(seg_t.astype(int), 0, n_segs_actual - 1)
-    u = seg_t - seg_idx  # local parameter in [0, 1]
+        seg_t = np.mod(t, 1.0) * k
+        seg_idx = np.floor(seg_t).astype(int) % k
+        u = seg_t - np.floor(seg_t)
+
+        p0 = pts[seg_idx]
+        p1 = pts[(seg_idx + 1) % k]
+        m0 = tangents[seg_idx]
+        m1 = tangents[(seg_idx + 1) % k]
+    else:
+        n_ctrl = len(pts)
+        tangents = np.zeros_like(pts)
+        for i in range(1, n_ctrl - 1):
+            tangents[i] = _tangent(pts[i - 1], pts[i], pts[i + 1])
+        tangents[0] = tangents[1]
+        tangents[-1] = tangents[-2]
+
+        # Map global t to segment index and local parameter
+        n_segs_actual = n_ctrl - 1
+        seg_t = t * n_segs_actual
+        seg_idx = np.clip(seg_t.astype(int), 0, n_segs_actual - 1)
+        u = seg_t - seg_idx  # local parameter in [0, 1]
+
+        p0 = pts[seg_idx]
+        p1 = pts[seg_idx + 1]
+        m0 = tangents[seg_idx]
+        m1 = tangents[seg_idx + 1]
 
     # Cubic Hermite basis
     h00 = 2 * u ** 3 - 3 * u ** 2 + 1
     h10 = u ** 3 - 2 * u ** 2 + u
     h01 = -2 * u ** 3 + 3 * u ** 2
     h11 = u ** 3 - u ** 2
-
-    p0 = pts[seg_idx]
-    p1 = pts[seg_idx + 1]
-    m0 = tangents[seg_idx]
-    m1 = tangents[seg_idx + 1]
 
     x = h00 * p0[:, 0] + h10 * m0[:, 0] + h01 * p1[:, 0] + h11 * m1[:, 0]
     y = h00 * p0[:, 1] + h10 * m0[:, 1] + h01 * p1[:, 1] + h11 * m1[:, 1]

@@ -85,6 +85,20 @@ class TestBasisFunctions:
         assert np.allclose(W.sum(axis=0), 1.0)
         assert W.shape == (1, 20)
 
+    def test_blend_weights_periodic_partition_of_unity(self):
+        from shape_blend_splines.basis import blend_weights
+        t = np.linspace(0.0, 1.0, 120, endpoint=False)
+        centers = np.array([0.0, 0.25, 0.5, 0.75])
+        W = blend_weights(t, centers, locality=2.0, periodic=True)
+        assert W.shape == (4, 120)
+        assert np.allclose(W.sum(axis=0), 1.0, atol=1e-10)
+
+    def test_blend_weights_periodic_wraps_edges(self):
+        from shape_blend_splines.basis import blend_weights
+        centers = np.array([0.0, 0.25, 0.5, 0.75])
+        W = blend_weights(np.array([0.0, 1.0]), centers, locality=3.0, periodic=True)
+        assert np.allclose(W[:, 0], W[:, 1], atol=1e-10)
+
     def test_bspline_basis_partition_of_unity(self):
         from shape_blend_splines.basis import uniform_bspline_weights
         t = np.linspace(0.0, 1.0, 50)
@@ -163,6 +177,13 @@ class TestShapeBlendSpline:
         sbs = ShapeBlendSpline([circle_arc, ellipse_arc], locality=1.0)
         assert len(sbs) == 2
 
+    def test_periodic_construction(self):
+        from shape_blend_splines.curve import PeriodicShapeBlendSpline
+        from shape_blend_splines.shapes import circle_arc, ellipse_arc, star_arc
+        sbs = PeriodicShapeBlendSpline([circle_arc, ellipse_arc, star_arc], locality=2.0)
+        assert len(sbs) == 3
+        assert sbs.closed is True
+
     def test_evaluate_shape(self):
         from shape_blend_splines.curve import ShapeBlendSpline
         from shape_blend_splines.shapes import circle_arc, star_arc
@@ -218,6 +239,23 @@ class TestShapeBlendSpline:
         pts = sbs.evaluate(t)
         assert pts.shape == (100, 2)
         assert np.all(np.isfinite(pts))
+
+    def test_periodic_curve_matches_at_domain_edges(self):
+        from shape_blend_splines.curve import PeriodicShapeBlendSpline
+        from shape_blend_splines.shapes import circle_arc, ellipse_arc, rectangle_arc, star_arc
+        sbs = PeriodicShapeBlendSpline(
+            [circle_arc, ellipse_arc, rectangle_arc, star_arc],
+            locality=3.0,
+        )
+        pts = sbs.evaluate(np.array([0.0, 1.0]))
+        assert np.allclose(pts[0], pts[1], atol=1e-10)
+
+    def test_control_point_spline_closed_loop(self):
+        from shape_blend_splines.curve import ControlPointSpline
+        ctrl = np.array([[0, 0], [1, 2], [3, 1], [4, 3]], dtype=float)
+        sbs = ControlPointSpline(ctrl, locality=1.5, closed=True)
+        pts = sbs.evaluate(np.array([0.0, 1.0]))
+        assert np.allclose(pts[0], pts[1], atol=1e-10)
 
 
 # ---------------------------------------------------------------------------

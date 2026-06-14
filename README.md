@@ -10,189 +10,113 @@
   <img src="https://img.shields.io/badge/python-3.8%2B-blue" alt="Python 3.8+"/>
 </p>
 
-> **Shape-Blend-Splines** is a Python research software package for locality-aware blending of parametric shapes using shape-preserving spline basis functions.
+> **Shape Blend Splines (SBS)** are non-rational, partition-of-unity spline curves built by blending whole parametric shapes with smooth polynomial basis functions.
 
-This repository presents an open implementation of the **Shape Blend Spline (SBS)** framework for the construction of complex planar curves from simpler constituent parametric shapes. The software is intended for research, teaching, visual experimentation, and computational prototyping in geometric modelling and spline-based shape design.
+This repository provides a Python implementation of the Shape Blend Spline framework from Li (2011), with a focus on the distinctive idea that makes SBS different from classical control-point-only spline workflows:
 
-A central strength of the SBS framework is that it provides a flexible mechanism for constructing smooth blended geometries with strong local shape control **without requiring rational spline basis functions or classical tensor-product spline constructions**.
+- the curve is a **non-rational weighted sum**,
+- the weights are **piecewise-polynomial smooth-step differences**, and
+- the blended object is assembled from **whole parametric shape functions** rather than only from control points.
 
-The framework also emphasises the use of **partition-of-unity basis functions that are piecewise polynomial over general two-dimensional partitions**, rather than being restricted to rectangular parameter domains.
+That makes SBS useful for familiar spline tasks such as open-curve design, closed loops, and control-point-driven modelling, while also exposing a capability that typical NURBS demos do not show directly: **local preservation and transition between entire geometric primitives** such as circles, ellipses, rounded rectangles, and stars along one curve.
 
-The package supports:
-- multi-shape blending with locality control,
-- global weighted interpolation between shapes,
-- morphing workflows,
-- control-point-driven curve construction,
-- interactive experimentation in Jupyter and Google Colab.
-
----
-
-## Scientific context
-
-Shape Blend Splines provide a mechanism for combining multiple constituent shapes into a single smooth parametric curve while selectively preserving local geometric characteristics. The central principle is that each constituent shape contributes through a partition-of-unity weight, and the locality of that contribution can be controlled continuously.
-
-In practical terms, this enables the construction of blended curves that interpolate between geometric identities without reducing the result to a purely uniform global average. An important consequence is that individual features can remain recognisable over subregions of the parameter domain even while the curve as a whole is blended.
-
-More broadly, the partition-of-unity viewpoint is not tied to a single rectangular layout. The basis construction is naturally aligned with **piecewise-polynomial blending over more general two-dimensional partitions**, which is one of the conceptual distinctions highlighted in the original work.
-
-This repository provides a Python implementation suitable for:
-- exploratory computational geometry,
-- algorithmic prototyping,
-- visual demonstrations in teaching,
-- reproducible examples for spline-based shape blending.
-
----
-
-## Reference publication
-
-This repository is based on the following publication:
+## Reference
 
 > Q. Li, **"Shape Blend Splines"**  
 > *Computer-Aided Design*, **43**(8), 990–1001, 2011.  
 > DOI: [10.1016/j.cad.2011.01.006](https://doi.org/10.1016/j.cad.2011.01.006)
 
----
+## Core formula
 
-## Mathematical formulation
-
-A Shape Blend Spline is a planar parametric curve of the form
+For constituent parametric shapes \(\mathbf{S}_j(t)\) and partition-of-unity weights \(W_j(t)\), the blended curve is
 
 $$
-\mathbf{C}(t) = \sum_{j=0}^{k-1} W_j(t)\,\mathbf{S}_j(t), \qquad t \in [0,1],
+\mathbf{C}(t) = \sum_{j=0}^{k-1} W_j(t)\,\mathbf{S}_j(t).
 $$
 
-where:
+This implementation follows that non-rational form directly.
 
-| Symbol | Interpretation |
-|--------|----------------|
-| $\mathbf{S}_j(t)$ | the *j*-th constituent parametric shape |
-| $W_j(t)$ | a partition-of-unity blending weight satisfying $\sum_j W_j(t)=1$ |
-| $\alpha$ | a locality parameter controlling the concentration of influence |
+### Basis construction
 
-As the locality parameter increases, the influence of each constituent shape becomes more concentrated near its associated region of the parameter domain. Consequently, the resulting blended curve can preserve stronger local geometric identity.
+For an interval \([a,b]\), SBS uses smooth polynomial step functions and forms
 
-From a modelling perspective, the significance of this formulation is that rich blended geometry can be obtained through **shape-preserving piecewise-polynomial basis design**, avoiding the need to encode all detail directly into a single traditional spline representation.
+$$
+B_{a,b}(t) = S_b(t) - S_a(t).
+$$
 
----
+These basis pieces are then normalised to produce weights satisfying
 
-## Software scope
+$$
+\sum_j W_j(t)=1.
+$$
 
-The repository currently provides the following capabilities:
+The locality parameter \(\alpha\) controls how concentrated each weight is around its centre:
 
-- **Locality-aware shape blending** through `ShapeBlendSpline`
-- **Ordered multi-shape blending** through `blend_shape_series`
-- **Global weighted blending** through `ShapeBlender` and `blend_two_shapes`
-- **Frame-based morphing** through `shape_morph`
-- **Control-point curve generation** through `ControlPointSpline`
-- **Interactive notebook demonstrations** for visual and computational exploration
+- **small \(\alpha\)** → broader, more global mixing,
+- **large \(\alpha\)** → narrower support and stronger local shape identity.
 
-The implementation is designed to be lightweight, readable, and suitable for extension in research and teaching settings.
+## What this repository highlights
 
----
+### 1. True shape blending
+The primary API blends **whole shapes** evaluated at the same global parameter \(t\), not a rational control-point denominator.
+
+### 2. Open and closed curves
+The package supports both:
+- **open SBS curves** with ordered centres, and
+- **closed periodic SBS curves** where the first and last shapes are neighbours.
+
+### 3. Locality-aware design
+Unlike a purely global average, the same set of component shapes can produce either a smooth global hybrid or a strongly local patchwork of recognisable shape regions by changing only \(\alpha\).
+
+### 4. Familiar and beyond-familiar workflows
+The repository includes:
+- `ControlPointSpline` for control-point-driven curve design,
+- `ShapeBlendSpline` for open shape sequences,
+- `PeriodicShapeBlendSpline` for closed periodic loops,
+- `ShapeBlender` for simple global weighted baselines.
+
+This means the package can cover many familiar spline-style modelling tasks while also illustrating SBS-specific capabilities that are awkward to express as standard control-point NURBS examples.
+
+> **Accuracy note:** this repository does **not** claim to replace every strength of NURBS. In particular, rational NURBS remain the classical tool for exact conics. The strength of SBS here is different: locality-aware blending of entire parametric primitives with polynomial partition-of-unity weights.
 
 ## Repository structure
 
 ```text
 Shape-Blend-Splines/
-├── shape_blend_splines/        # Core Python package
-│   ├── __init__.py             # Public API
-│   ├── basis.py                # Basis and weighting functions
-│   ├── shapes.py               # Parametric shape definitions
-│   ├── curve.py                # ShapeBlendSpline and ControlPointSpline
-│   └── blend.py                # Blending and morphing utilities
+├── shape_blend_splines/
+│   ├── __init__.py
+│   ├── basis.py
+│   ├── blend.py
+│   ├── curve.py
+│   └── shapes.py
 ├── notebooks/
 │   └── interactive_shape_blend_demo.ipynb
 ├── examples/
 │   └── basic_demo.py
 ├── tests/
 │   └── test_smoke.py
-├── CITATION.cff
 ├── pyproject.toml
-├── requirements.txt
 ├── setup.py
-├── LICENSE
 └── README.md
 ```
 
----
-
 ## Installation
-
-### Install from source
 
 ```bash
 git clone https://github.com/QL-UoHull/Shape-Blend-Splines.git
 cd Shape-Blend-Splines
 pip install -r requirements.txt
-pip install -e .
+pip install -e .[dev,notebook]
 ```
 
-### Core requirements
+## Quick start
 
-- Python 3.8 or later
-- NumPy 1.21 or later
-- Matplotlib 3.4 or later
-
-### Optional notebook dependencies
-
-```bash
-pip install jupyterlab notebook ipywidgets
-```
-
-### Planned package installation
-
-If the project is later published to PyPI, installation will be:
-
-```bash
-pip install shape-blend-splines
-```
-
----
-
-## Minimal usage examples
-
-### Four-control-point shape family
-
-```python
-import numpy as np
-from shape_blend_splines.curve import ControlPointSpline
-
-
-def square_family_control_points(rounding=0.45, n_side=6):
-    rounding = float(np.clip(rounding, 0.0, 1.0))
-    corners = np.array([
-        [-1.0, -1.0],
-        [ 1.0, -1.0],
-        [ 1.0,  1.0],
-        [-1.0,  1.0],
-    ])
-    center = corners.mean(axis=0)
-
-    pts = []
-    for i in range(4):
-        p0 = corners[i]
-        p1 = corners[(i + 1) % 4]
-        for j in range(n_side):
-            s = j / n_side
-            edge_pt = (1 - s) * p0 + s * p1
-            v = edge_pt - center
-            square_pt = v / max(np.max(np.abs(v)), 1e-12)
-            circle_pt = v / max(np.linalg.norm(v), 1e-12)
-            pts.append((1 - rounding) * square_pt + rounding * circle_pt)
-    return np.array(pts)
-
-
-control_pts = square_family_control_points(rounding=0.45, n_side=6)
-sbs = ControlPointSpline(control_pts, locality=2.0)
-pts = sbs.evaluate(np.linspace(0, 1, 700))
-```
-
-### Locality-aware blending of multiple shapes
+### Closed periodic blend of multiple primitives
 
 ```python
 import numpy as np
 from functools import partial
-from shape_blend_splines import ShapeBlendSpline
+from shape_blend_splines import PeriodicShapeBlendSpline
 from shape_blend_splines.shapes import (
     circle_arc,
     ellipse_arc,
@@ -202,159 +126,140 @@ from shape_blend_splines.shapes import (
 )
 
 shapes = [
-    circle_arc,
-    partial(ellipse_arc, a=1.5, b=0.7),
-    partial(superellipse_arc, exponent=4.0),
-    rectangle_arc,
-    star_arc,
+    partial(circle_arc, radius=1.00),
+    partial(ellipse_arc, a=1.45, b=0.75),
+    partial(superellipse_arc, a=1.15, b=1.15, exponent=4.0),
+    partial(rectangle_arc, width=2.0, height=1.6),
+    partial(star_arc, outer_radius=1.25, inner_radius=0.50),
 ]
 
-sbs = ShapeBlendSpline(shapes, locality=2.5)
-pts = sbs.evaluate(np.linspace(0, 1, 600))
+sbs = PeriodicShapeBlendSpline(shapes, locality=3.0)
+t = np.linspace(0.0, 1.0, 800, endpoint=False)
+pts = sbs.evaluate(t)
+weights = sbs.weights_at(t)
 ```
 
-### Control-point-driven curve construction
+### Open blend across a sequence of shapes
 
 ```python
 import numpy as np
-from shape_blend_splines.curve import ControlPointSpline
+from functools import partial
+from shape_blend_splines import ShapeBlendSpline
+from shape_blend_splines.shapes import line_segment, circle_arc, from_control_points
 
-ctrl = np.array([[0, 0], [1, 2], [3, 1], [4, 3], [6, 0]])
-sbs = ControlPointSpline(ctrl, locality=2.0)
-pts = sbs.evaluate(np.linspace(0, 1, 400))
+shapes = [
+    partial(line_segment, p0=(-1.8, -0.5), p1=(1.8, -0.5)),
+    partial(circle_arc, center=(0.0, -0.1), radius=1.3,
+            theta_start=0.95*np.pi, theta_end=0.05*np.pi),
+    partial(from_control_points, control_pts=np.array([
+        [-1.7, -0.3],
+        [-0.8,  1.2],
+        [ 0.6,  0.4],
+        [ 1.8,  1.1],
+    ])),
+]
+
+sbs = ShapeBlendSpline(shapes, locality=2.0)
+curve = sbs.evaluate(np.linspace(0.0, 1.0, 600))
 ```
 
----
+### Control-point workflow
 
-## API overview
+```python
+import numpy as np
+from shape_blend_splines import ControlPointSpline
 
-| Class / Function | Purpose |
-|-----------------|---------|
-| `ShapeBlendSpline(shapes, locality=α)` | locality-aware blending of multiple constituent shapes |
-| `blend_shape_series(shapes, locality=α)` | ordered multi-shape blending helper |
-| `ControlPointSpline(pts, locality=α)` | spline-like curve generation from control points |
-| `ShapeBlender(shapes, weights=[...])` | global weighted blending without spatial localisation |
-| `blend_two_shapes(S_a, S_b, blend=β)` | interpolation between two shapes |
-| `shape_morph(S_a, S_b, n_frames=N)` | morphing sequence generation |
+control_pts = np.array([
+    [0.0, 0.0],
+    [1.0, 1.8],
+    [3.0, 0.8],
+    [4.0, 2.4],
+    [5.5, 0.2],
+])
 
-### Built-in shape primitives
+open_curve = ControlPointSpline(control_pts, locality=2.0)
+closed_loop = ControlPointSpline(control_pts, locality=2.0, closed=True)
+```
+
+## Main APIs
+
+| API | Role |
+|-----|------|
+| `ShapeBlendSpline` | open non-rational SBS curve through an ordered shape sequence |
+| `PeriodicShapeBlendSpline` | closed periodic SBS curve with wrap-around blending |
+| `ControlPointSpline` | control-point-driven convenience interface |
+| `ShapeBlender` | global weighted blend baseline |
+| `blend_shape_series` | helper for open SBS sequences |
+| `blend_two_shapes` | simple global interpolation helper |
+| `shape_morph` | frame-by-frame global blend sequence |
+
+## Built-in shape primitives
 
 | Function | Description |
 |----------|-------------|
-| `circle_arc(t, center, radius, …)` | circular arc |
-| `ellipse_arc(t, center, a, b, …)` | elliptic arc |
-| `superellipse_arc(t, center, a, b, exponent, …)` | superellipse / Lamé-type curve |
-| `rectangle_arc(t, center, width, height)` | closed rectangular shape |
-| `star_arc(t, center, outer_r, inner_r, n_points)` | regular star polygon |
-| `polyline(t, vertices)` | piecewise-linear path |
-| `from_control_points(t, ctrl_pts)` | control-point-based spline helper |
+| `line_segment` | straight segment |
+| `circle_arc` | circular arc or full circle |
+| `ellipse_arc` | elliptic arc or full ellipse |
+| `superellipse_arc` | Lamé / rounded-rectangle family |
+| `rectangle_arc` | closed rectangle parameterised by perimeter |
+| `polyline` | piecewise-linear path |
+| `star_arc` | regular closed star polygon |
+| `from_control_points` | smooth Hermite curve from control points |
 
----
+## Demos
 
-## Choosing between global and locality-aware blending
+### Scripted demo
 
-The package includes both **global weighted blending** and **locality-aware SBS blending**.
-
-| Use case | Recommended API | Interpretation |
-|----------|------------------|----------------|
-| Interpolate between two shapes with a single blend factor | `blend_two_shapes(...)` | uniform global interpolation |
-| Blend several shapes while preserving local character | `ShapeBlendSpline(...)` | partition-of-unity, locality-aware blending |
-| Generate a morphing sequence | `shape_morph(...)` | repeated global interpolation |
-| Construct a smooth curve through control points | `ControlPointSpline(...)` | SBS-inspired local control |
-| Explore a square-to-rounded-square design family | `ControlPointSpline(...)` with a derived control polygon | control-point shape design on a fixed scaffold |
-
-The locality parameter is meaningful for the SBS-based methods and should be interpreted as a control on the spatial concentration of individual shape influence.
-
----
-
-## Notebook and interactive demonstration
-
-An interactive notebook is provided at:
-
-`notebooks/interactive_shape_blend_demo.ipynb`
-
-### Run in Google Colab
-
-Open directly in Google Colab:
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/QL-UoHull/Shape-Blend-Splines/blob/main/notebooks/interactive_shape_blend_demo.ipynb)
-
-Instructions:
-1. Open the notebook in Colab using the badge above.
-2. If prompted, allow Colab a few moments to install the dependencies in the first code cell.
-3. Run the notebook from top to bottom using **Runtime → Run all**.
-4. If you reopen the notebook after updates, use **Runtime → Restart session** and rerun all cells so the latest package version is loaded.
-
-### Run in Jupyter Notebook or JupyterLab
-
-After cloning the repository and installing dependencies, start Jupyter locally:
-
-```bash
-pip install jupyterlab notebook ipywidgets
-jupyter notebook notebooks/interactive_shape_blend_demo.ipynb
-```
-
-Or with JupyterLab:
-
-```bash
-jupyter lab notebooks/interactive_shape_blend_demo.ipynb
-```
-
-Instructions:
-1. Clone this repository and install the package with `pip install -e .`.
-2. Launch either Jupyter Notebook or JupyterLab using one of the commands above.
-3. Open `notebooks/interactive_shape_blend_demo.ipynb`.
-4. Run the notebook cells from top to bottom.
-5. If you change the package source code while Jupyter is already running, restart the kernel and rerun all cells to pick up the latest local code.
-
-The notebook includes demonstrations of:
-1. four-control-point shape design from a square scaffold,
-2. locality-aware multi-shape blending,
-3. partition-of-unity weight visualisation,
-4. morphing sequences,
-5. control-point-based curves,
-6. custom user-defined parametric shapes.
-
----
-
-## Example script
-
-A standalone scripted example is provided:
+Run:
 
 ```bash
 python examples/basic_demo.py
 ```
 
-This script generates several figure outputs illustrating representative blending and curve-construction behaviours.
+The script generates figures showing:
+- a **closed periodic multi-shape SBS curve**,
+- a **locality sweep** for the same shapes,
+- an **open SBS design sequence**,
+- **periodic weight functions**,
+- a **global-vs-local comparison**,
+- **open and closed control-point curves**.
 
----
+### Notebook demo
+
+The notebook at `notebooks/interactive_shape_blend_demo.ipynb` uses the package API directly and walks through:
+- periodic closed-curve blending,
+- locality control,
+- open shape sequences,
+- global versus locality-aware blending,
+- control-point workflows.
+
+Open it locally with:
+
+```bash
+jupyter lab notebooks/interactive_shape_blend_demo.ipynb
+```
+
+or in Colab via the badge at the top of this README.
 
 ## Testing
 
-Basic validation tests are provided in `tests/`.
-
 ```bash
-pip install pytest
-pytest tests/ -v
+python3 -m pytest tests/ -v
 ```
 
----
+## Why SBS is interesting
 
-## Reproducibility and implementation note
+SBS is most compelling when you want a curve to look locally like different geometric primitives across different regions of the same parameter domain.
 
-This repository should be understood as an **open research implementation** of the Shape Blend Spline concept.
+Examples from this repository include:
+- a closed loop that becomes circle-like, ellipse-like, rounded-rectangle-like, rectangular, and star-like in different regions,
+- a locality parameter that continuously moves between global smoothing and strong local identity,
+- periodic wrap-around blending for closed curves,
+- control-point-driven curves for familiar spline-style modelling.
 
-The current codebase is designed to reflect the mathematical intent and modelling philosophy of the referenced work while also providing a practical, inspectable, and extensible Python implementation.
-
-Accordingly, some implementation details—such as specific locality kernels, normalisation strategies, or shape catalogue design—represent explicit engineering and modelling choices made for clarity, portability, and usability.
-
-Contributions that improve verification against the published method, extend the mathematical framework, or strengthen experimental validation are particularly welcome.
-
----
+That combination is the main research story of the repository.
 
 ## Citation
-
-If you use this repository in research, teaching, or scholarly communication, please cite the original paper:
 
 ```bibtex
 @article{li2011shapeblend,
@@ -369,24 +274,6 @@ If you use this repository in research, teaching, or scholarly communication, pl
 }
 ```
 
-Citation metadata for GitHub is also provided in `CITATION.cff`.
-
----
-
-## Contributing
-
-Contributions are welcome in areas including:
-- verification against the reference publication,
-- additional parametric shape families,
-- higher-dimensional or surface-based extensions,
-- export and visualisation tooling,
-- numerical experiments and benchmarks,
-- documentation improvements for research and teaching use.
-
-Please open an issue or submit a pull request to discuss proposed changes.
-
----
-
 ## License
 
-This project is released under the **MIT License**. See [LICENSE](LICENSE) for details.
+Released under the **MIT License**. See [LICENSE](LICENSE).
