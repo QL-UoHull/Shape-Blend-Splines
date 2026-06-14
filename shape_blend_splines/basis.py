@@ -245,6 +245,80 @@ def blend_weights(
 
 
 # ---------------------------------------------------------------------------
+# Per-knot weighting (renormalised, non-rational)
+# ---------------------------------------------------------------------------
+
+def apply_knot_weights(W: np.ndarray, knot_weights: ArrayLike) -> np.ndarray:
+    """
+    Apply per-knot scalar weights to an SBS weight matrix and renormalise.
+
+    Given the normalised partition-of-unity weights *W* (shape ``(k, m)``),
+    multiply each row by the corresponding scalar ``w_j`` and renormalise so
+    the result still sums to one column-wise (partition of unity preserved):
+
+    .. math::
+       \\hat{W}_j(t) = \\frac{w_j \\, W_j(t)}{\\sum_l w_l \\, W_l(t)}
+
+    This lets users bias the blend toward any subset of shapes/edges while
+    keeping the curve non-rational.  Equal weights reproduce the original *W*.
+    A weight of 0 suppresses that shape's influence entirely (falls back to
+    equal-weight split if all weights are zero at some *t* value).
+
+    Parameters
+    ----------
+    W:
+        Partition-of-unity weight array of shape *(k, m)*, as returned by
+        :func:`blend_weights`.  Columns must already sum to 1.
+    knot_weights:
+        Scalar weight for each knot/shape, array-like of length *k*.  All
+        values must be non-negative.
+
+    Returns
+    -------
+    np.ndarray
+        Re-weighted array of shape *(k, m)*, columns summing to 1.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from shape_blend_splines.basis import blend_weights, apply_knot_weights
+    >>> t = np.linspace(0, 1, 50, endpoint=False)
+    >>> W = blend_weights(t, np.array([0.0, 0.25, 0.5, 0.75]), periodic=True)
+    >>> W_hat = apply_knot_weights(W, [1.0, 2.0, 1.0, 1.0])
+    >>> np.allclose(W_hat.sum(axis=0), 1.0)
+    True
+    """
+    W = np.asarray(W, dtype=float)
+    k = W.shape[0]
+    knot_weights = np.asarray(knot_weights, dtype=float)
+    if knot_weights.shape != (k,):
+        raise ValueError(
+            f"knot_weights length {knot_weights.shape} must match W rows {k}."
+        )
+    if np.any(knot_weights < 0):
+        raise ValueError("All knot_weights must be non-negative.")
+    W_hat = W * knot_weights[:, np.newaxis]   # (k, m)
+    total = W_hat.sum(axis=0)                 # (m,)
+    zero_mask = total < 1e-14
+    if np.any(zero_mask):
+        # Fallback: distribute equally among knots that have non-zero scalar
+        # weight.  This ensures a zero-weighted knot stays at zero even when
+        # it is the only one with SBS support at that t value.
+        nonzero_kw = knot_weights > 0
+        n_nonzero = int(nonzero_kw.sum())
+        if n_nonzero > 0:
+            fallback = np.where(nonzero_kw, 1.0 / n_nonzero, 0.0).astype(float)
+        else:
+            # All scalar weights are zero: fall back to equal for all knots
+            fallback = np.full(k, 1.0 / k)
+        # Apply the fallback only to columns where total was zero
+        W_hat = np.where(zero_mask[np.newaxis, :], fallback[:, np.newaxis], W_hat)
+        total = W_hat.sum(axis=0)
+        total = np.where(total < 1e-14, 1.0, total)
+    return W_hat / total
+
+
+# ---------------------------------------------------------------------------
 # Standard cubic B-spline basis (for comparison / educational use)
 # ---------------------------------------------------------------------------
 

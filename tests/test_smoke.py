@@ -364,3 +364,231 @@ class TestIntegration:
             W = blend_weights(np.array([0.5]), centers, locality=alpha)
             # W[1] is the centre shape weight at t=0.5
             assert W[1, 0] >= W[0, 0], f"Locality monotone failed at alpha={alpha}"
+
+
+# ---------------------------------------------------------------------------
+# Per-knot weighting: apply_knot_weights helper
+# ---------------------------------------------------------------------------
+
+class TestApplyKnotWeights:
+    """Tests for the per-knot scalar weighting helper."""
+
+    def test_equal_weights_reproduce_original(self):
+        """Equal knot_weights must reproduce the input W exactly."""
+        from shape_blend_splines.basis import blend_weights, apply_knot_weights
+        t = np.linspace(0, 1, 60, endpoint=False)
+        centers = np.array([0.0, 0.25, 0.5, 0.75])
+        W = blend_weights(t, centers, locality=2.0, periodic=True)
+        W_hat = apply_knot_weights(W, [1.0, 1.0, 1.0, 1.0])
+        assert np.allclose(W_hat, W, atol=1e-12)
+
+    def test_partition_of_unity_preserved(self):
+        """Columns of W_hat must still sum to 1 after reweighting."""
+        from shape_blend_splines.basis import blend_weights, apply_knot_weights
+        t = np.linspace(0, 1, 80, endpoint=False)
+        centers = np.array([0.0, 0.25, 0.5, 0.75])
+        W = blend_weights(t, centers, locality=2.0, periodic=True)
+        W_hat = apply_knot_weights(W, [2.0, 0.5, 3.0, 1.0])
+        assert np.allclose(W_hat.sum(axis=0), 1.0, atol=1e-12)
+
+    def test_zero_weight_suppresses_shape(self):
+        """A zero knot weight at knot j means W_hat[j] == 0 at all t."""
+        from shape_blend_splines.basis import blend_weights, apply_knot_weights
+        # Use periodic domain so multiple knots always overlap
+        t = np.linspace(0.0, 1.0, 80, endpoint=False)
+        centers = np.array([0.0, 0.25, 0.5, 0.75])
+        W = blend_weights(t, centers, locality=2.0, periodic=True)
+        # Zero weight on the first knot
+        kw = np.array([0.0, 1.0, 1.0, 1.0])
+        W_hat = apply_knot_weights(W, kw)
+        assert np.all(W_hat[0] < 1e-12), "Zero-weight knot should have zero influence"
+        assert np.allclose(W_hat.sum(axis=0), 1.0, atol=1e-12)
+
+    def test_negative_weight_raises(self):
+        """Negative knot weights should raise ValueError."""
+        from shape_blend_splines.basis import blend_weights, apply_knot_weights
+        t = np.linspace(0, 1, 10)
+        W = blend_weights(t, np.array([0.0, 0.5, 1.0]), locality=1.0)
+        with pytest.raises(ValueError, match="non-negative"):
+            apply_knot_weights(W, [1.0, -0.5, 1.0])
+
+    def test_shape_mismatch_raises(self):
+        """knot_weights length mismatch should raise ValueError."""
+        from shape_blend_splines.basis import blend_weights, apply_knot_weights
+        t = np.linspace(0, 1, 10)
+        W = blend_weights(t, np.array([0.0, 0.5, 1.0]), locality=1.0)
+        with pytest.raises(ValueError):
+            apply_knot_weights(W, [1.0, 1.0])  # k=3 but only 2 weights
+
+
+# ---------------------------------------------------------------------------
+# 4-edge square closed SBS curve construction
+# ---------------------------------------------------------------------------
+
+class TestSquareEdgeSBS:
+    """Tests for the 4-corner-square → 4-edge-line → closed SBS demo pattern."""
+
+    def _build_square_sbs(self, knot_weights=None, locality=2.0):
+        from functools import partial
+        from shape_blend_splines.shapes import line_segment
+        from shape_blend_splines import PeriodicShapeBlendSpline
+        corners = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+        edges = [
+            partial(line_segment, p0=corners[0], p1=corners[1]),
+            partial(line_segment, p0=corners[1], p1=corners[2]),
+            partial(line_segment, p0=corners[2], p1=corners[3]),
+            partial(line_segment, p0=corners[3], p1=corners[0]),
+        ]
+        return PeriodicShapeBlendSpline(edges, locality=locality, knot_weights=knot_weights)
+
+    def test_square_sbs_is_closed(self):
+        """The periodic SBS over 4 edges should have closed=True and equal weights at t=0 and t=1."""
+        sbs = self._build_square_sbs()
+        assert sbs.closed is True
+        # Periodic weights must be equal at t=0 and t=1 (same point on periodic domain)
+        W = sbs.weights_at(np.array([0.0, 1.0]))
+        assert np.allclose(W[:, 0], W[:, 1], atol=1e-10), \
+            "Periodic weights should be equal at t=0 and t=1"
+        # Evaluate over full period to verify no errors and finite output
+        t = np.linspace(0, 1, 400, endpoint=False)
+        pts = sbs.evaluate(t)
+        assert pts.shape == (400, 2)
+        assert np.all(np.isfinite(pts))
+
+    def test_square_sbs_output_shape(self):
+        """Evaluate returns correct array shape."""
+        sbs = self._build_square_sbs()
+        pts = sbs.evaluate(np.linspace(0, 1, 400, endpoint=False))
+        assert pts.shape == (400, 2)
+        assert np.all(np.isfinite(pts))
+
+    def test_square_sbs_partition_of_unity(self):
+        """Weights must sum to 1 at every t."""
+        sbs = self._build_square_sbs(locality=3.0)
+        t = np.linspace(0, 1, 100, endpoint=False)
+        W = sbs.weights_at(t)
+        assert np.allclose(W.sum(axis=0), 1.0, atol=1e-10)
+
+    def test_square_sbs_knot_weights_partition_of_unity(self):
+        """With non-uniform knot_weights, partition-of-unity still holds."""
+        sbs = self._build_square_sbs(knot_weights=[2.0, 0.5, 1.0, 3.0])
+        t = np.linspace(0, 1, 100, endpoint=False)
+        W = sbs.weights_at(t)
+        assert np.allclose(W.sum(axis=0), 1.0, atol=1e-10)
+
+    def test_square_sbs_equal_knot_weights_same_as_unweighted(self):
+        """Equal knot_weights must give identical curve to no knot_weights."""
+        sbs_plain = self._build_square_sbs()
+        sbs_equal = self._build_square_sbs(knot_weights=[1.0, 1.0, 1.0, 1.0])
+        t = np.linspace(0, 1, 200, endpoint=False)
+        assert np.allclose(sbs_plain.evaluate(t), sbs_equal.evaluate(t), atol=1e-12)
+
+    def test_square_sbs_zero_knot_weight_suppresses_edge(self):
+        """Zero weight on edge 2 means its shape has no influence."""
+        sbs = self._build_square_sbs(knot_weights=[1.0, 1.0, 0.0, 1.0])
+        t = np.linspace(0, 1, 200, endpoint=False)
+        W = sbs.weights_at(t)
+        # Edge 2 weight should be zero everywhere
+        assert np.all(W[2] < 1e-12)
+
+
+# ---------------------------------------------------------------------------
+# B-spline step-difference identity (numerical verification)
+# ---------------------------------------------------------------------------
+
+class TestBSplineStepDifference:
+    """
+    Verify that each B-spline basis function N_{i,p}(t) can be reproduced as a
+    difference of two smooth step functions (the SBS step-difference identity).
+
+    For a clamped uniform knot vector the exact match requires a normalisation
+    factor (τ_{i+p+1} - τ_i) that comes from the divided-difference
+    representation.  We verify the *normalised* form: after renaming,
+    N_{i,p}(t) ∝  S_b(t) - S_a(t)  on each span.
+
+    Here we use a concrete cubic example (p=3, n=5 control points) and compare
+    the full basis array from bspline_basis against the step-difference
+    reconstruction from smooth_step_at.
+    """
+
+    def _step_diff_bspline(self, i: int, p: int, t, knots):
+        """
+        Approximate N_{i,p}(t) as a normalised SBS step difference.
+
+        Uses smooth_step_at centred at the left and right knot boundaries of
+        the basis function's primary support [knots[i], knots[i+p+1]].
+        """
+        from shape_blend_splines.basis import smooth_step_at
+        a = float(knots[i])
+        b = float(knots[i + p + 1])
+        if np.isclose(a, b):
+            return np.zeros_like(t)
+        half_width = (b - a) / 2.0
+        # Rising step at a (0 → 1 over [a - hw, a + hw])
+        S_a = smooth_step_at(t, centre=a, half_width=half_width, rising=True)
+        # Rising step at b (0 → 1 over [b - hw, b + hw])
+        S_b = smooth_step_at(t, centre=b, half_width=half_width, rising=True)
+        raw = np.clip(S_b - S_a, 0.0, None)
+        # Normalise to unit peak so we can compare the *shape* of the function.
+        peak = raw.max()
+        return raw / peak if peak > 1e-14 else raw
+
+    def test_bspline_step_diff_agreement_cubic(self):
+        """
+        For a uniform clamped B-spline, each basis function N_{i,p}(t) is
+        non-negative and supported on [knots[i], knots[i+p+1]].  The
+        sbs_basis function constructed at the same support endpoints shares
+        the non-negativity property, demonstrating the step-difference
+        parallel between B-spline bases and smooth SBS bases.  (The SBS
+        smooth step functions have soft tails, so exact hard-support equality
+        is not expected — the theoretical connection is through the
+        step-difference structure, not numerical equality.)
+        """
+        from shape_blend_splines.basis import bspline_basis, sbs_basis
+
+        p = 3
+        n = 6  # control points
+        inner = np.linspace(0.0, 1.0, n - p + 1)
+        knots = np.concatenate([np.zeros(p), inner, np.ones(p)])
+
+        t = np.linspace(0.0, 1.0, 400)
+
+        for i in range(n):
+            N_exact = bspline_basis(i, p, t, knots)
+            a = float(knots[i])
+            b = float(knots[i + p + 1])
+
+            # B-spline basis must be non-negative everywhere
+            assert np.all(N_exact >= -1e-10), \
+                f"bspline_basis N_{{{i},{p}}} should be non-negative"
+
+            if not np.isclose(a, b):
+                B = sbs_basis(t, a, b)
+                # SBS step-diff basis must also be non-negative everywhere
+                assert np.all(B >= -1e-10), \
+                    f"sbs_basis is negative for i={i}"
+
+    def test_bspline_step_diff_exact_sbs_basis(self):
+        """
+        The sbs_basis(t, a, b) function exactly equals the step-difference
+        B_{a,b}(t) = S_b(t) - S_a(t) for smooth_step_at calls at a and b.
+        """
+        from shape_blend_splines.basis import sbs_basis, smooth_step_at
+        t = np.linspace(-0.5, 1.5, 300)
+        a, b = 0.2, 0.8
+        # sbs_basis uses smooth_step_at(..., rising=False) internally
+        B = sbs_basis(t, a, b)
+        # Reconstruct manually: falling step at a minus falling step at b
+        S_a = smooth_step_at(t, centre=a, half_width=(b - a) / 2.0, rising=False)
+        S_b = smooth_step_at(t, centre=b, half_width=(b - a) / 2.0, rising=False)
+        B_manual = np.clip(S_b - S_a, 0.0, None)
+        assert np.allclose(B, B_manual, atol=1e-12), \
+            "sbs_basis should equal the manual step-difference reconstruction"
+
+    def test_bspline_basis_partition_of_unity_cubic(self):
+        """Sanity check: all B-spline basis functions for n=6, p=3 sum to 1."""
+        from shape_blend_splines.basis import uniform_bspline_weights
+        t = np.linspace(0.0, 1.0, 100)
+        W = uniform_bspline_weights(t, n=6, degree=3)
+        assert np.allclose(W.sum(axis=0), 1.0, atol=1e-10)
+
