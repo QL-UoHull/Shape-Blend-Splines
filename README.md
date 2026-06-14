@@ -151,22 +151,40 @@ pip install shape-blend-splines
 
 ## Minimal usage examples
 
-### Global interpolation between two shapes
+### Four-control-point shape family
 
 ```python
 import numpy as np
-import matplotlib.pyplot as plt
-from shape_blend_splines import blend_two_shapes
-from shape_blend_splines.shapes import circle_arc, star_arc
+from shape_blend_splines.curve import ControlPointSpline
 
-blender = blend_two_shapes(circle_arc, star_arc, blend=0.5)
-t = np.linspace(0, 1, 500)
-pts = blender.evaluate(t)
 
-plt.plot(pts[:, 0], pts[:, 1])
-plt.axis("equal")
-plt.title("Circle–Star blend (β = 0.5)")
-plt.show()
+def square_family_control_points(rounding=0.45, n_side=6):
+    rounding = float(np.clip(rounding, 0.0, 1.0))
+    corners = np.array([
+        [-1.0, -1.0],
+        [ 1.0, -1.0],
+        [ 1.0,  1.0],
+        [-1.0,  1.0],
+    ])
+    center = corners.mean(axis=0)
+
+    pts = []
+    for i in range(4):
+        p0 = corners[i]
+        p1 = corners[(i + 1) % 4]
+        for j in range(n_side):
+            s = j / n_side
+            edge_pt = (1 - s) * p0 + s * p1
+            v = edge_pt - center
+            square_pt = v / max(np.max(np.abs(v)), 1e-12)
+            circle_pt = v / max(np.linalg.norm(v), 1e-12)
+            pts.append((1 - rounding) * square_pt + rounding * circle_pt)
+    return np.array(pts)
+
+
+control_pts = square_family_control_points(rounding=0.45, n_side=6)
+sbs = ControlPointSpline(control_pts, locality=2.0)
+pts = sbs.evaluate(np.linspace(0, 1, 700))
 ```
 
 ### Locality-aware blending of multiple shapes
@@ -243,6 +261,7 @@ The package includes both **global weighted blending** and **locality-aware SBS 
 | Blend several shapes while preserving local character | `ShapeBlendSpline(...)` | partition-of-unity, locality-aware blending |
 | Generate a morphing sequence | `shape_morph(...)` | repeated global interpolation |
 | Construct a smooth curve through control points | `ControlPointSpline(...)` | SBS-inspired local control |
+| Explore a square-to-rounded-square design family | `ControlPointSpline(...)` with a derived control polygon | control-point shape design on a fixed scaffold |
 
 The locality parameter is meaningful for the SBS-based methods and should be interpreted as a control on the spatial concentration of individual shape influence.
 
@@ -289,7 +308,7 @@ Instructions:
 5. If you change the package source code while Jupyter is already running, restart the kernel and rerun all cells to pick up the latest local code.
 
 The notebook includes demonstrations of:
-1. two-shape global interpolation,
+1. four-control-point shape design from a square scaffold,
 2. locality-aware multi-shape blending,
 3. partition-of-unity weight visualisation,
 4. morphing sequences,
