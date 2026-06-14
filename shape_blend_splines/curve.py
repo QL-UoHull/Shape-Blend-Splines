@@ -1,8 +1,9 @@
-"""
+r"""
 Shape Blend Spline — main curve class.
 
 This module provides :class:`ShapeBlendSpline`, the primary user-facing class
-for the Shape Blend Spline (SBS) technique.
+for the Shape Blend Spline (SBS) technique, together with a periodic variant
+for closed curves.
 
 A Shape Blend Spline is a parametric planar curve defined as a
 *weighted blend* of *k* constituent shapes:
@@ -29,8 +30,13 @@ Q. Li, "Shape Blend Splines", *Computer-Aided Design*, 2011.
 DOI: 10.1016/j.cad.2011.01.006
 
 .. note::
-   Exact formulae from the paper were not available during development.
-   This implementation is a faithful approximation.  See README.md.
+   The central implementation is non-rational:
+
+   .. math::
+      \mathbf{C}(t) = \sum_j W_j(t)\,\mathbf{S}_j(t)
+
+   The basis weights form a partition of unity on either an open or periodic
+   parameter domain.
 """
 
 from __future__ import annotations
@@ -67,6 +73,11 @@ class ShapeBlendSpline:
     blend_width:
         Support half-width σ for the weight functions.  Defaults to the
         mean inter-centre spacing.
+    closed:
+        If True, evaluate weights on a periodic domain so the first and last
+        shapes are neighbours. This is the standard closed-curve SBS setting.
+    period:
+        Period length for the global parameter domain when ``closed=True``.
 
     Examples
     --------
@@ -88,14 +99,26 @@ class ShapeBlendSpline:
         t_centers: ArrayLike | None = None,
         locality: float = 1.0,
         blend_width: float | None = None,
+        closed: bool = False,
+        period: float = 1.0,
     ) -> None:
         self.shapes = list(shapes)
         k = len(self.shapes)
         if k == 0:
             raise ValueError("At least one shape is required.")
 
+        self.closed = bool(closed)
+        self.period = float(period)
+        if self.period <= 0:
+            raise ValueError("period must be positive.")
+
         if t_centers is None:
-            t_centers = np.linspace(0.0, 1.0, k)
+            t_centers = np.linspace(
+                0.0,
+                self.period,
+                k,
+                endpoint=not self.closed,
+            )
         self.t_centers = np.asarray(t_centers, dtype=float)
         if len(self.t_centers) != k:
             raise ValueError(
@@ -127,7 +150,14 @@ class ShapeBlendSpline:
         k = len(self.shapes)
 
         # Compute normalised blend weights  (k, m)
-        W = blend_weights(t, self.t_centers, self.locality, self.blend_width)
+        W = blend_weights(
+            t,
+            self.t_centers,
+            self.locality,
+            self.blend_width,
+            periodic=self.closed,
+            period=self.period,
+        )
 
         # Weighted sum of shape evaluations
         result = np.zeros((len(t), 2))
@@ -172,7 +202,14 @@ class ShapeBlendSpline:
             W[j, i] is the weight of shape *j* at parameter t[i].
         """
         t = np.atleast_1d(np.asarray(t, dtype=float))
-        return blend_weights(t, self.t_centers, self.locality, self.blend_width)
+        return blend_weights(
+            t,
+            self.t_centers,
+            self.locality,
+            self.blend_width,
+            periodic=self.closed,
+            period=self.period,
+        )
 
     # ------------------------------------------------------------------
     # Convenience
@@ -185,6 +222,7 @@ class ShapeBlendSpline:
         return (
             f"ShapeBlendSpline(n_shapes={len(self.shapes)}, "
             f"locality={self.locality}, "
+            f"closed={self.closed}, "
             f"t_centers={self.t_centers})"
         )
 
@@ -229,7 +267,7 @@ class ShapeBlendSpline:
         import matplotlib.pyplot as plt
         import matplotlib.cm as cm
 
-        t = np.linspace(0.0, 1.0, n_points)
+        t = np.linspace(0.0, self.period, n_points, endpoint=not self.closed)
         pts = self.evaluate(t)
 
         if show_weights:
@@ -274,7 +312,8 @@ class ShapeBlendSpline:
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.set_title(
-            f"Shape Blend Spline  (α = {self.locality:.2f}, "
+            f"{'Closed' if self.closed else 'Open'} Shape Blend Spline  "
+            f"(α = {self.locality:.2f}, "
             f"k = {len(self.shapes)} shapes)"
         )
 
@@ -291,6 +330,31 @@ class ShapeBlendSpline:
             return ax, ax_w
 
         return ax
+
+
+# ---------------------------------------------------------------------------
+# Explicit periodic alias
+# ---------------------------------------------------------------------------
+
+class PeriodicShapeBlendSpline(ShapeBlendSpline):
+    """Convenience subclass for closed, periodic SBS curves."""
+
+    def __init__(
+        self,
+        shapes: Sequence[Callable],
+        t_centers: ArrayLike | None = None,
+        locality: float = 1.0,
+        blend_width: float | None = None,
+        period: float = 1.0,
+    ) -> None:
+        super().__init__(
+            shapes=shapes,
+            t_centers=t_centers,
+            locality=locality,
+            blend_width=blend_width,
+            closed=True,
+            period=period,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +402,7 @@ class ControlPointSpline(ShapeBlendSpline):
         shape_fn=None,
         locality: float = 1.0,
         blend_width: float | None = None,
+        closed: bool = False,
     ) -> None:
         from .shapes import from_control_points
 
@@ -349,21 +414,22 @@ class ControlPointSpline(ShapeBlendSpline):
         if shape_fn is None:
             # Default: smooth Catmull-Rom through the control points
             def _default_shape(t, _pts=control_pts):
-                return from_control_points(t, _pts)
+                return from_control_points(t, _pts, closed=closed)
 
             shapes = [_default_shape]
-            t_centers = np.array([0.5])
+            t_centers = np.array([0.0 if closed else 0.5])
         elif callable(shape_fn):
             shapes = [shape_fn]
-            t_centers = np.array([0.5])
+            t_centers = np.array([0.0 if closed else 0.5])
         else:
             shapes = list(shape_fn)
-            t_centers = np.linspace(0.0, 1.0, len(shapes))
+            t_centers = np.linspace(0.0, 1.0, len(shapes), endpoint=not closed)
 
         super().__init__(
             shapes=shapes,
             t_centers=t_centers,
             locality=locality,
             blend_width=blend_width,
+            closed=closed,
         )
         self.control_pts = control_pts
