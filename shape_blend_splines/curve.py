@@ -386,6 +386,8 @@ class ControlPointSpline(ShapeBlendSpline):
         Shape-preservation locality parameter α.
     blend_width:
         Support half-width σ.
+    closed:
+        If True, build a closed control-point loop instead of an open curve.
 
     Examples
     --------
