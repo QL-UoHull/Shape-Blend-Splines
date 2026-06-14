@@ -46,7 +46,7 @@ from typing import Callable, Sequence
 import numpy as np
 from numpy.typing import ArrayLike
 
-from .basis import blend_weights
+from .basis import blend_weights, apply_knot_weights
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +78,12 @@ class ShapeBlendSpline:
         shapes are neighbours. This is the standard closed-curve SBS setting.
     period:
         Period length for the global parameter domain when ``closed=True``.
+    knot_weights:
+        Optional per-knot scalar multipliers, array-like of length *k*.
+        When provided, the raw SBS weights are multiplied element-wise and
+        renormalised to keep the partition-of-unity property (non-rational).
+        Equal values reproduce the standard SBS curve.  A value of 0 for
+        a knot suppresses that shape entirely.
 
     Examples
     --------
@@ -101,6 +107,7 @@ class ShapeBlendSpline:
         blend_width: float | None = None,
         closed: bool = False,
         period: float = 1.0,
+        knot_weights: ArrayLike | None = None,
     ) -> None:
         self.shapes = list(shapes)
         k = len(self.shapes)
@@ -128,6 +135,18 @@ class ShapeBlendSpline:
         self.locality = float(locality)
         self.blend_width = blend_width
 
+        if knot_weights is not None:
+            kw = np.asarray(knot_weights, dtype=float)
+            if kw.shape != (k,):
+                raise ValueError(
+                    f"knot_weights must have length {k}, got {kw.shape}."
+                )
+            if np.any(kw < 0):
+                raise ValueError("All knot_weights must be non-negative.")
+            self.knot_weights: np.ndarray | None = kw
+        else:
+            self.knot_weights = None
+
     # ------------------------------------------------------------------
     # Core evaluation
     # ------------------------------------------------------------------
@@ -147,7 +166,6 @@ class ShapeBlendSpline:
             (x, y) coordinates of the blended curve.
         """
         t = np.atleast_1d(np.asarray(t, dtype=float))
-        k = len(self.shapes)
 
         # Compute normalised blend weights  (k, m)
         W = blend_weights(
@@ -158,6 +176,10 @@ class ShapeBlendSpline:
             periodic=self.closed,
             period=self.period,
         )
+
+        # Apply optional per-knot scalar weights and renormalise
+        if self.knot_weights is not None:
+            W = apply_knot_weights(W, self.knot_weights)
 
         # Weighted sum of shape evaluations
         result = np.zeros((len(t), 2))
@@ -191,6 +213,10 @@ class ShapeBlendSpline:
         """
         Return the blend weight matrix at parameter values *t*.
 
+        If ``knot_weights`` were supplied at construction, the returned
+        weights already incorporate the per-knot scaling and renormalisation
+        (i.e. they are the :math:`\\hat{W}_j(t)` values, still summing to 1).
+
         Parameters
         ----------
         t:
@@ -202,7 +228,7 @@ class ShapeBlendSpline:
             W[j, i] is the weight of shape *j* at parameter t[i].
         """
         t = np.atleast_1d(np.asarray(t, dtype=float))
-        return blend_weights(
+        W = blend_weights(
             t,
             self.t_centers,
             self.locality,
@@ -210,6 +236,9 @@ class ShapeBlendSpline:
             periodic=self.closed,
             period=self.period,
         )
+        if self.knot_weights is not None:
+            W = apply_knot_weights(W, self.knot_weights)
+        return W
 
     # ------------------------------------------------------------------
     # Convenience
@@ -346,6 +375,7 @@ class PeriodicShapeBlendSpline(ShapeBlendSpline):
         locality: float = 1.0,
         blend_width: float | None = None,
         period: float = 1.0,
+        knot_weights: ArrayLike | None = None,
     ) -> None:
         super().__init__(
             shapes=shapes,
@@ -354,6 +384,7 @@ class PeriodicShapeBlendSpline(ShapeBlendSpline):
             blend_width=blend_width,
             closed=True,
             period=period,
+            knot_weights=knot_weights,
         )
 
 
