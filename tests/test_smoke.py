@@ -30,25 +30,30 @@ def test_version_attribute():
 # ---------------------------------------------------------------------------
 
 class TestBasisFunctions:
-    def test_raised_cosine_bump_at_center(self):
-        from shape_blend_splines.basis import raised_cosine_bump
-        val = raised_cosine_bump(np.array([0.0]))
-        assert np.isclose(val, 1.0)
+    def test_recursive_smooth_step_range(self):
+        from shape_blend_splines.basis import recursive_smooth_step
+        x = np.linspace(-1.0, 2.0, 300)
+        y = recursive_smooth_step(x, order=2)
+        assert np.all(y >= 0.0)
+        assert np.all(y <= 1.0)
+        assert np.isclose(y[0], 0.0)
+        assert np.isclose(y[-1], 1.0)
 
-    def test_raised_cosine_bump_at_boundary(self):
-        from shape_blend_splines.basis import raised_cosine_bump
-        val = raised_cosine_bump(np.array([1.0, -1.0]))
-        assert np.allclose(val, 0.0)
+    def test_smooth_step_at_orientations(self):
+        from shape_blend_splines.basis import smooth_step_at
+        t = np.array([-10.0, 10.0])
+        up = smooth_step_at(t, centre=0.0, half_width=1.0, rising=True)
+        down = smooth_step_at(t, centre=0.0, half_width=1.0, rising=False)
+        assert np.allclose(up, [0.0, 1.0])
+        assert np.allclose(down, [1.0, 0.0])
 
-    def test_raised_cosine_bump_outside_support(self):
-        from shape_blend_splines.basis import raised_cosine_bump
-        val = raised_cosine_bump(np.array([1.5, -2.0, 10.0]))
-        assert np.allclose(val, 0.0)
-
-    def test_raised_cosine_bump_non_negative(self):
-        from shape_blend_splines.basis import raised_cosine_bump
-        u = np.linspace(-2.0, 2.0, 200)
-        assert np.all(raised_cosine_bump(u) >= 0.0)
+    def test_sbs_basis_non_negative(self):
+        from shape_blend_splines.basis import sbs_basis
+        t = np.linspace(-1.0, 2.0, 300)
+        B = sbs_basis(t, a=0.0, b=1.0, order=2)
+        assert np.all(B >= 0.0)
+        assert np.isclose(B[0], 0.0)
+        assert np.isclose(B[-1], 0.0)
 
     def test_blend_weights_partition_of_unity(self):
         from shape_blend_splines.basis import blend_weights

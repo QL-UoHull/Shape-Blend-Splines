@@ -1,129 +1,84 @@
 """
 Shape-preserving blending basis functions.
 
-This module implements the core weight / basis-function machinery for the
-Shape Blend Spline (SBS) technique described in:
+This module implements paper-faithful SBS basis functions using smooth
+piecewise-polynomial step functions:
 
-    Q. Li, "Shape Blend Splines", Computer-Aided Design, 2011.
-    DOI: 10.1016/j.cad.2011.01.006
+.. math::
+   B_{a,b}(t) = S_b(t) - S_a(t)
 
-The central idea is a family of *shape-preserving partition-of-unity* (PU)
-weight functions that can be tuned via a *locality parameter* α:
-
-  • α = 0  →  uniform (global) blending: all shapes contribute equally.
-  • α = 1  →  standard raised-cosine (smooth local) blending.
-  • α > 1  →  more localised; each shape dominates near its own centre
-               parameter, producing stronger local shape preservation.
-
-Because the weights always sum to 1, the blended curve interpolates and
-blends between the constituent shapes rather than pulling toward zero.
-
-.. note::
-   Exact formulae from the paper were not available during development.
-   This implementation provides a faithful, documented approximation based
-   on the published repository description and standard shape-preserving
-   spline literature.  See README.md for full transparency notes.
+where :math:`S_a` and :math:`S_b` are centred smooth step functions.
+The construction uses polynomial arithmetic only (no trigonometric or
+rational basis kernels).
 """
 
 from __future__ import annotations
+
+from math import comb, factorial
 
 import numpy as np
 from numpy.typing import ArrayLike
 
 
 # ---------------------------------------------------------------------------
-# Primitive bump / kernel functions
+# Smooth piecewise-polynomial steps
 # ---------------------------------------------------------------------------
 
-def raised_cosine_bump(u: ArrayLike) -> np.ndarray:
+def recursive_smooth_step(x: ArrayLike, order: int = 2) -> np.ndarray:
     """
-    Smooth raised-cosine bump function.
+    Recursive piecewise-polynomial smooth step in [0, 1].
 
     .. math::
-        \\phi(u) =
-        \\begin{cases}
-          \\tfrac{1}{2}\\bigl(1 + \\cos(\\pi u)\\bigr) & |u| \\le 1 \\\\
-          0 & |u| > 1
-        \\end{cases}
-
-    The function is non-negative, symmetric, has value 1 at u = 0,
-    value 0 at |u| = 1, and zero first derivative at the boundary —
-    making it ideal as a smooth partition-of-unity kernel.
-
-    Parameters
-    ----------
-    u:
-        Normalised distance from the centre.  Scalar or array.
-
-    Returns
-    -------
-    np.ndarray
-        Same shape as *u*.
+       T_n(x) = \\frac{1}{(n+1)!}
+       \\sum_{j=0}^{n+1}(-1)^j\\binom{n+1}{j}\\max((n+1)x-j,0)^{n+1}
     """
-    u = np.asarray(u, dtype=float)
-    result = np.zeros_like(u)
-    mask = np.abs(u) <= 1.0
-    result[mask] = 0.5 * (1.0 + np.cos(np.pi * u[mask]))
-    return result
+    n = int(order)
+    x = np.clip(np.asarray(x, dtype=float), 0.0, 1.0)
+    t = (n + 1) * x
+    prefactor = 1.0 / factorial(n + 1)
+    result = np.zeros_like(t)
+    for j in range(n + 2):
+        result += ((-1) ** j) * comb(n + 1, j) * np.maximum(t - j, 0.0) ** (n + 1)
+    return np.clip(result * prefactor, 0.0, 1.0)
 
 
-def cubic_hermite_bump(u: ArrayLike) -> np.ndarray:
+def smooth_step_at(
+    t: ArrayLike,
+    centre: float,
+    half_width: float,
+    order: int = 2,
+    rising: bool = True,
+) -> np.ndarray:
     """
-    Smooth cubic-Hermite bump function (alternative kernel).
-
-    .. math::
-        \\phi(u) =
-        \\begin{cases}
-          1 - 3u^2 + 2|u|^3 & |u| \\le 1 \\\\
-          0 & |u| > 1
-        \\end{cases}
-
-    This is the standard C¹ cubic Hermite weight used in meshless methods.
+    Centred smooth step over [centre-half_width, centre+half_width].
     """
-    u = np.asarray(u, dtype=float)
-    au = np.abs(u)
-    result = np.zeros_like(u)
-    mask = au <= 1.0
-    result[mask] = 1.0 - 3.0 * au[mask] ** 2 + 2.0 * au[mask] ** 3
-    return result
+    t = np.asarray(t, dtype=float)
+    half_width = float(half_width)
+    if half_width <= 0:
+        raise ValueError("half_width must be positive.")
+    u = (t - centre) / half_width
+    x = np.clip(0.5 * (u + 1.0), 0.0, 1.0)
+    s = recursive_smooth_step(x, order=order)
+    return s if rising else (1.0 - s)
 
 
-# ---------------------------------------------------------------------------
-# Shape-preserving weight with locality control
-# ---------------------------------------------------------------------------
-
-def shape_blend_kernel(u: ArrayLike, locality: float = 1.0) -> np.ndarray:
+def sbs_basis(
+    t: ArrayLike,
+    a: float,
+    b: float,
+    half_width: float | None = None,
+    order: int = 2,
+) -> np.ndarray:
     """
-    Compute the (unnormalised) shape-blend weight for normalised distance *u*.
-
-    The locality-controlled weight is defined as:
-
-    .. math::
-        w(u; \\alpha) = \\phi(u)^\\alpha
-
-    where φ is the raised-cosine bump and α ≥ 0 is the *locality parameter*.
-
-    Parameters
-    ----------
-    u:
-        Normalised distance (scalar or array).
-    locality:
-        Locality parameter α ≥ 0.
-
-        * α = 0 → constant weight (uniform / global blending).
-        * α = 1 → raised-cosine (smooth local blending, default).
-        * α > 1 → more concentrated; stronger shape preservation.
-
-    Returns
-    -------
-    np.ndarray
-        Non-negative weights, same shape as *u*.
+    SBS basis over interval [a, b] using two smooth step functions.
     """
-    phi = raised_cosine_bump(u)
-    if locality == 0:
-        # Degenerate case: constant weight everywhere the kernel is non-zero
-        return np.where(np.abs(np.asarray(u, dtype=float)) <= 1.0, 1.0, 0.0)
-    return phi ** float(locality)
+    if not b > a:
+        raise ValueError("Expected interval endpoints with b > a.")
+    if half_width is None:
+        half_width = (b - a) / 2.0
+    S_a = smooth_step_at(t, a, half_width, order=order, rising=False)
+    S_b = smooth_step_at(t, b, half_width, order=order, rising=False)
+    return np.clip(S_b - S_a, 0.0, None)
 
 
 # ---------------------------------------------------------------------------
@@ -137,17 +92,18 @@ def blend_weights(
     width: float | None = None,
 ) -> np.ndarray:
     """
-    Compute normalised shape-blend weights for all shape centres.
+    Compute SBS partition-of-unity weights for all shape centres.
 
-    For *k* shapes with centre parameters t₀, t₁, …, t_{k-1}, the weight of
-    shape *j* at parameter *t* is:
+    For centres :math:`t_0 < t_1 < \\dots < t_{k-1}`, define midpoint bounds
+    :math:`t_{j\\pm 1/2}` and unnormalised weights:
 
     .. math::
-        W_j(t) = \\frac{w\\!\\left(\\frac{t - t_j}{\\sigma};\\,\\alpha\\right)}
-                       {\\sum_{l=0}^{k-1} w\\!\\left(\\frac{t - t_l}{\\sigma};\\,\\alpha\\right)}
+       w_j(t) = B_{t_{j-1/2}, t_{j+1/2}}(t)
 
-    where σ is the support half-width and the denominator ensures
-    :math:`\\sum_j W_j(t) = 1` (partition of unity).
+    Then:
+
+    .. math::
+       W_j(t) = \\frac{w_j(t)}{\\sum_l w_l(t)}
 
     Parameters
     ----------
@@ -156,11 +112,11 @@ def blend_weights(
     centers:
         Centre parameter for each shape, array of shape *(k,)*.
     locality:
-        Shape-preservation locality parameter α (see :func:`shape_blend_kernel`).
+        Locality parameter α. Larger values narrow transition bands and
+        increase locality.
     width:
-        Support half-width σ for each weight function.  Defaults to the
-        average spacing between consecutive centres, which ensures full
-        coverage with mild overlap.
+        Optional base transition half-width for each endpoint step.
+        If omitted, each interval uses half of its midpoint span.
 
     Returns
     -------
@@ -176,20 +132,37 @@ def blend_weights(
     >>> np.allclose(W.sum(axis=0), 1.0)
     True
     """
-    t = np.asarray(t, dtype=float)
+    t = np.atleast_1d(np.asarray(t, dtype=float))
     centers = np.asarray(centers, dtype=float)
     k = len(centers)
+    if k == 0:
+        raise ValueError("At least one centre is required.")
+    if k == 1:
+        return np.ones((1, len(t)), dtype=float)
+    if np.any(np.diff(centers) <= 0):
+        raise ValueError("centers must be strictly increasing.")
+    locality = float(locality)
+    if locality < 0:
+        raise ValueError("locality must be non-negative.")
+    if locality == 0:
+        return np.full((k, len(t)), 1.0 / k, dtype=float)
 
-    if width is None:
-        if k > 1:
-            # Use average gap (so neighbouring supports just touch)
-            width = (centers[-1] - centers[0]) / (k - 1)
+    midpoints = 0.5 * (centers[:-1] + centers[1:])
+    bounds = np.empty(k + 1, dtype=float)
+    bounds[1:-1] = midpoints
+    bounds[0] = centers[0] - (midpoints[0] - centers[0])
+    bounds[-1] = centers[-1] + (centers[-1] - midpoints[-1])
+
+    raw = np.zeros((k, len(t)), dtype=float)
+    for j in range(k):
+        a = bounds[j]
+        b = bounds[j + 1]
+        if width is None:
+            base_half_width = 0.5 * (b - a)
         else:
-            width = 1.0
-
-    # u[j, i] = (t[i] - centers[j]) / width
-    u = (t[np.newaxis, :] - centers[:, np.newaxis]) / width  # (k, m)
-    raw = shape_blend_kernel(u, locality)                     # (k, m)
+            base_half_width = float(width)
+        half_width = max(base_half_width / locality, 1e-12)
+        raw[j] = sbs_basis(t, a, b, half_width=half_width, order=2)
 
     # Normalise column-wise (partition of unity).
     # If ALL kernels vanish at a parameter value (can happen at domain
