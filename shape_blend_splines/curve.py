@@ -46,7 +46,7 @@ from typing import Callable, Sequence
 import numpy as np
 from numpy.typing import ArrayLike
 
-from .basis import blend_weights, apply_knot_weights
+from .basis import blend_weights
 
 
 # ---------------------------------------------------------------------------
@@ -79,11 +79,8 @@ class ShapeBlendSpline:
     period:
         Period length for the global parameter domain when ``closed=True``.
     knot_weights:
-        Optional per-knot scalar multipliers, array-like of length *k*.
-        When provided, the raw SBS weights are multiplied element-wise and
-        renormalised to keep the partition-of-unity property (non-rational).
-        Equal values reproduce the standard SBS curve.  A value of 0 for
-        a knot suppresses that shape entirely.
+        Unsupported compatibility parameter. Per-knot renormalisation was
+        removed so the SBS path remains strictly non-rational.
 
     Examples
     --------
@@ -136,16 +133,10 @@ class ShapeBlendSpline:
         self.blend_width = blend_width
 
         if knot_weights is not None:
-            kw = np.asarray(knot_weights, dtype=float)
-            if kw.shape != (k,):
-                raise ValueError(
-                    f"knot_weights must have length {k}, got {kw.shape}."
-                )
-            if np.any(kw < 0):
-                raise ValueError("All knot_weights must be non-negative.")
-            self.knot_weights: np.ndarray | None = kw
-        else:
-            self.knot_weights = None
+            raise ValueError(
+                "knot_weights are no longer supported because SBS evaluation "
+                "is strictly non-rational."
+            )
 
     # ------------------------------------------------------------------
     # Core evaluation
@@ -167,7 +158,7 @@ class ShapeBlendSpline:
         """
         t = np.atleast_1d(np.asarray(t, dtype=float))
 
-        # Compute normalised blend weights  (k, m)
+        # Compute direct polynomial blend weights  (k, m)
         W = blend_weights(
             t,
             self.t_centers,
@@ -176,10 +167,6 @@ class ShapeBlendSpline:
             periodic=self.closed,
             period=self.period,
         )
-
-        # Apply optional per-knot scalar weights and renormalise
-        if self.knot_weights is not None:
-            W = apply_knot_weights(W, self.knot_weights)
 
         # Weighted sum of shape evaluations
         result = np.zeros((len(t), 2))
@@ -213,10 +200,6 @@ class ShapeBlendSpline:
         """
         Return the blend weight matrix at parameter values *t*.
 
-        If ``knot_weights`` were supplied at construction, the returned
-        weights already incorporate the per-knot scaling and renormalisation
-        (i.e. they are the :math:`\\hat{W}_j(t)` values, still summing to 1).
-
         Parameters
         ----------
         t:
@@ -236,8 +219,6 @@ class ShapeBlendSpline:
             periodic=self.closed,
             period=self.period,
         )
-        if self.knot_weights is not None:
-            W = apply_knot_weights(W, self.knot_weights)
         return W
 
     # ------------------------------------------------------------------

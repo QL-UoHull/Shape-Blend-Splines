@@ -124,31 +124,34 @@ pip install -e .[dev,notebook]
 
 ```python
 import numpy as np
-from functools import partial
 from shape_blend_splines import PeriodicShapeBlendSpline
 from shape_blend_splines.shapes import line_segment
 
 # 4 corners of a square (counter-clockwise)
-corners = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+corners = np.array([(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)])
+centers = np.linspace(0.0, 1.0, len(corners), endpoint=False)
 
-# 4 edge lines as constituent shapes
-edges = [
-    partial(line_segment, p0=corners[0], p1=corners[1]),  # bottom
-    partial(line_segment, p0=corners[1], p1=corners[2]),  # right
-    partial(line_segment, p0=corners[2], p1=corners[3]),  # top
-    partial(line_segment, p0=corners[3], p1=corners[0]),  # left
-]
+def closed_edge_cycle_shapes(corners):
+    shapes = []
+    for j, center in enumerate(centers):
+        p0 = tuple(corners[j])
+        p1 = tuple(corners[(j + 1) % len(corners)])
 
-# Closed periodic SBS — equal weights, varying locality
-sbs = PeriodicShapeBlendSpline(edges, locality=2.0)
+        def edge_shape(t, p0=p0, p1=p1, center=center):
+            local_t = np.mod(np.asarray(t) - center + 0.5, 1.0)
+            return line_segment(local_t, p0=p0, p1=p1)
+
+        shapes.append(edge_shape)
+    return shapes
+
+edges = closed_edge_cycle_shapes(corners)
+
+# Closed periodic SBS — same 4 inputs, different polynomial localities
+sbs = PeriodicShapeBlendSpline(edges, t_centers=centers, locality=2.0)
 t = np.linspace(0.0, 1.0, 600, endpoint=False)
-pts = sbs.evaluate(t)           # (600, 2) closed curve
-weights = sbs.weights_at(t)     # (4, 600) partition-of-unity basis
-
-# Per-edge scalar weights: bias toward the bottom edge
-sbs_biased = PeriodicShapeBlendSpline(edges, locality=2.0,
-                                       knot_weights=[3.0, 1.0, 1.0, 1.0])
-pts_biased = sbs_biased.evaluate(t)
+square_like = sbs.evaluate(t)
+rounded = PeriodicShapeBlendSpline(edges, t_centers=centers, locality=0.8).evaluate(t)
+ellipse_like = PeriodicShapeBlendSpline(edges, t_centers=centers, locality=0.4).evaluate(t)
 ```
 
 ### Open blend across a sequence of shapes
@@ -201,7 +204,6 @@ closed_loop = ControlPointSpline(control_pts, locality=2.0, closed=True)
 | `PeriodicShapeBlendSpline` | closed periodic SBS curve with wrap-around blending |
 | `ControlPointSpline` | control-point-driven convenience interface |
 | `ShapeBlender` | global weighted blend baseline |
-| `apply_knot_weights` | per-knot scalar weights with renormalisation (partition of unity preserved) |
 | `blend_shape_series` | helper for open SBS sequences |
 | `blend_two_shapes` | simple global interpolation helper |
 | `shape_morph` | frame-by-frame global blend sequence |
@@ -242,17 +244,16 @@ The script generates figures showing:
 The notebook at `notebooks/interactive_shape_blend_demo.ipynb` uses the package API directly and walks through:
 
 - **Section 1** — *4 control points / 4 edge lines → closed SBS curve*:
-  4 square corners → 4 straight edge lines → closed periodic SBS blend with
-  per-corner scalar weights and locality α, showing how different weight/α
-  settings produce a family of closed curves from the same geometry.
+  4 square corners → 4 phase-aligned edge lines → closed periodic SBS blend,
+  showing the intended square-like → transitional → ellipse-like locality
+  progression from the same geometry.
 - **Section 2** — *Open SBS sequence with locality story*:
   an open control-point polygon whose edges are blended by SBS, showing how
   α moves between a smooth global curve and a near-piecewise-linear path.
-- **Section 3** — *Interactive per-knot weights + locality*:
-  `ipywidgets` sliders (one per edge weight, one for α) that update in real
-  time both the SBS basis/weight curves $\hat{W}_j(t)$ and the resulting
-  closed curve.  A static fallback grid is also pre-rendered for non-widget
-  renderers.
+- **Section 3** — *Interactive locality sweep*:
+  an `ipywidgets` locality slider that updates in real time both the direct
+  SBS basis curves $W_j(t)$ and the resulting closed curve. A static fallback
+  grid is also pre-rendered for non-widget renderers.
 - **Section 4** — *Numerical verification: B-spline as a step-function difference*:
   plots the exact step-difference identity for `sbs_basis` and compares
   peak-normalised cubic B-spline bases against the SBS approximation.

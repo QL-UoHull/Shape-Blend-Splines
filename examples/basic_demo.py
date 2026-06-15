@@ -7,6 +7,7 @@ Run:
 Outputs:
     demo_periodic_cycle.png
     demo_locality_sweep.png
+    demo_four_point_closed_progression.png
     demo_open_sequence.png
     demo_periodic_weights.png
     demo_global_vs_local.png
@@ -81,6 +82,30 @@ def save(fig, filename):
     print(f"Saved: {path}")
 
 
+def closed_edge_cycle_shapes(corners):
+    """
+    Build phase-aligned edge-line shapes for a 4-point closed SBS demo.
+
+    Each edge is re-parameterised so its midpoint is sampled when the
+    corresponding periodic SBS weight reaches its centre. This produces the
+    intended rounded-square → transitional → ellipse-like family.
+    """
+    corners = np.asarray(corners, dtype=float)
+    centers = np.linspace(0.0, 1.0, len(corners), endpoint=False)
+    shapes = []
+    for j, center in enumerate(centers):
+        p0 = tuple(corners[j])
+        p1 = tuple(corners[(j + 1) % len(corners)])
+
+        def _edge_shape(t, *, p0=p0, p1=p1, center=center):
+            t = np.asarray(t, dtype=float)
+            local_t = np.mod(t - center + 0.5, 1.0)
+            return line_segment(local_t, p0=p0, p1=p1)
+
+        shapes.append(_edge_shape)
+    return shapes, centers
+
+
 def demo_periodic_cycle():
     shapes, labels = closed_demo_shapes()
     sbs = PeriodicShapeBlendSpline(shapes, locality=3.0)
@@ -116,6 +141,38 @@ def demo_locality_sweep():
         ax.grid(alpha=0.2)
     fig.suptitle("Locality sweep: global smoothing to strong local identity", y=1.02)
     save(fig, "demo_locality_sweep.png")
+
+
+def demo_four_point_closed_progression():
+    corners = np.array([
+        [-1.0, -1.0],
+        [1.0, -1.0],
+        [1.0, 1.0],
+        [-1.0, 1.0],
+    ])
+    edges, centers = closed_edge_cycle_shapes(corners)
+    t = np.linspace(0.0, 1.0, 900, endpoint=False)
+    closed_outline = np.vstack([corners, corners[:1]])
+    configs = [
+        (2.0, "Square-like rounded shape"),
+        (0.8, "Intermediate rounded shape"),
+        (0.4, "Ellipse-like smooth shape"),
+    ]
+
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4.6))
+    for ax, (alpha, title) in zip(axes, configs):
+        sbs = PeriodicShapeBlendSpline(edges, t_centers=centers, locality=alpha)
+        pts = sbs.evaluate(t)
+        ax.plot(closed_outline[:, 0], closed_outline[:, 1], ":", color="gray", alpha=0.45)
+        ax.plot(pts[:, 0], pts[:, 1], color="black", lw=2.6)
+        ax.scatter(corners[:, 0], corners[:, 1], color="dimgray", s=26, zorder=5)
+        ax.set_aspect("equal")
+        ax.set_title(title)
+        ax.set_xlabel("x")
+        ax.grid(alpha=0.2)
+    axes[0].set_ylabel("y")
+    fig.suptitle("Closed SBS from 4 control points using non-rational polynomial weights", y=1.02)
+    save(fig, "demo_four_point_closed_progression.png")
 
 
 def demo_open_sequence():
@@ -221,6 +278,7 @@ if __name__ == "__main__":
     print("Running Shape Blend Splines demonstrations …")
     demo_periodic_cycle()
     demo_locality_sweep()
+    demo_four_point_closed_progression()
     demo_open_sequence()
     demo_periodic_weights()
     demo_global_vs_local()

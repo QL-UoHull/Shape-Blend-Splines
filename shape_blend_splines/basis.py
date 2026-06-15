@@ -2,14 +2,9 @@
 Shape-preserving blending basis functions.
 
 This module implements paper-faithful SBS basis functions using smooth
-piecewise-polynomial step functions:
-
-.. math::
-   B_{a,b}(t) = S_b(t) - S_a(t)
-
-where :math:`S_a` and :math:`S_b` are centred smooth step functions.
-The construction uses polynomial arithmetic only (no trigonometric or
-rational basis kernels).
+piecewise-polynomial step functions. The blend weights are assembled directly
+from a telescoping family of step differences, so the SBS path stays entirely
+polynomial and non-rational.
 """
 
 from __future__ import annotations
@@ -85,19 +80,32 @@ def sbs_basis(
 # Partition-of-unity blend weights
 # ---------------------------------------------------------------------------
 
-def _circular_midpoint(a: float, b: float, period: float) -> float:
-    """Midpoint on a periodic domain, returned modulo *period*."""
-    a = float(a)
-    b = float(b)
-    if b < a:
-        b += period
-    return (0.5 * (a + b)) % period
+def _step_partition(
+    t: np.ndarray,
+    centers: np.ndarray,
+    *,
+    half_width: float,
+    order: int,
+) -> np.ndarray:
+    """Direct polynomial partition built from neighbouring smooth steps."""
+    k = len(centers)
+    if k == 1:
+        return np.ones((1, len(t)), dtype=float)
 
+    boundaries = 0.5 * (centers[:-1] + centers[1:])
+    steps = np.array(
+        [
+            smooth_step_at(t, boundary, half_width, order=order, rising=True)
+            for boundary in boundaries
+        ]
+    )
 
-def _circular_distance(values: np.ndarray, centers: np.ndarray, period: float) -> np.ndarray:
-    """Pairwise circular distances for periodic nearest-centre fallback."""
-    delta = np.abs(values[:, np.newaxis] - centers[np.newaxis, :])
-    return np.minimum(delta, period - delta)
+    W = np.zeros((k, len(t)), dtype=float)
+    W[0] = 1.0 - steps[0]
+    for j in range(1, k - 1):
+        W[j] = steps[j - 1] - steps[j]
+    W[-1] = steps[-1]
+    return np.clip(W, 0.0, 1.0)
 
 
 def blend_weights(
@@ -111,18 +119,19 @@ def blend_weights(
     order: int = 2,
 ) -> np.ndarray:
     """
-    Compute SBS partition-of-unity weights for all shape centres.
+    Compute direct non-rational SBS weights for all shape centres.
 
-    For centres :math:`t_0 < t_1 < \\dots < t_{k-1}`, define midpoint bounds
-    :math:`t_{j\\pm 1/2}` and unnormalised weights:
-
-    .. math::
-       w_j(t) = B_{t_{j-1/2}, t_{j+1/2}}(t)
-
-    Then:
+    For centres :math:`t_0 < t_1 < \\dots < t_{k-1}`, define midpoint
+    boundaries and a rising smooth step at each boundary. The SBS weights are
+    then assembled by a telescoping step-difference partition:
 
     .. math::
-       W_j(t) = \\frac{w_j(t)}{\\sum_l w_l(t)}
+       W_0(t) = 1 - U_1(t), \\qquad
+       W_j(t) = U_j(t) - U_{j+1}(t), \\qquad
+       W_{k-1}(t) = U_{k-1}(t).
+
+    The weights therefore satisfy :math:`\\sum_j W_j(t) = 1` identically
+    without any rational normalisation.
 
     Parameters
     ----------
@@ -134,8 +143,9 @@ def blend_weights(
         Locality parameter α. Larger values narrow transition bands and
         increase locality.
     width:
-        Optional base transition half-width for each endpoint step.
-        If omitted, each interval uses half of its midpoint span.
+        Optional base transition half-width before locality scaling. If
+        omitted, half of the minimum inter-centre spacing is used so the step
+        family remains ordered and the weights stay non-negative.
     periodic:
         If True, treat the parameter domain as periodic with wrap-around at
         ``period``. This is appropriate for closed curves.
@@ -147,16 +157,7 @@ def blend_weights(
     Returns
     -------
     np.ndarray
-        Weight array of shape *(k, m)*.  Each column sums to 1.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from shape_blend_splines.basis import blend_weights
-    >>> t = np.linspace(0, 1, 5)
-    >>> W = blend_weights(t, centers=[0.0, 0.5, 1.0], locality=1.0)
-    >>> np.allclose(W.sum(axis=0), 1.0)
-    True
+        Weight array of shape *(k, m)*. Each column sums to 1.
     """
     t = np.atleast_1d(np.asarray(t, dtype=float))
     centers = np.asarray(centers, dtype=float)
@@ -167,6 +168,7 @@ def blend_weights(
         return np.ones((1, len(t)), dtype=float)
     if np.any(np.diff(centers) <= 0):
         raise ValueError("centers must be strictly increasing.")
+
     locality = float(locality)
     order = int(order)
     if locality < 0:
@@ -174,148 +176,57 @@ def blend_weights(
     if locality == 0:
         return np.full((k, len(t)), 1.0 / k, dtype=float)
 
-    raw = np.zeros((k, len(t)), dtype=float)
     if periodic:
         period = float(period)
         if period <= 0:
             raise ValueError("period must be positive when periodic=True.")
-        t_periodic = np.mod(t, period)
-        centers_periodic = np.mod(centers, period)
-        if np.any(np.diff(centers_periodic) <= 0):
+        centers = np.mod(centers, period)
+        if np.any(np.diff(centers) <= 0):
             raise ValueError(
                 "centers must be strictly increasing within one period when periodic=True."
             )
 
-        for j in range(k):
-            c_prev = centers_periodic[(j - 1) % k]
-            c_curr = centers_periodic[j]
-            c_next = centers_periodic[(j + 1) % k]
+        wrapped_gaps = np.diff(np.concatenate([centers, centers[:1] + period]))
+        min_gap = wrapped_gaps.min()
+        base_half_width = 0.5 * min_gap if width is None else float(width)
+        half_width = max(base_half_width / locality, 1e-12)
 
-            left = _circular_midpoint(c_prev, c_curr, period=period)
-            right = _circular_midpoint(c_curr, c_next, period=period)
+        extended = np.concatenate([centers - period, centers, centers + period])
+        W_ext = _step_partition(
+            np.mod(t, period),
+            extended,
+            half_width=half_width,
+            order=order,
+        )
+        W = np.zeros((k, len(t)), dtype=float)
+        for block in range(3):
+            start = block * k
+            W += W_ext[start:start + k]
+        return W
 
-            t_local = t_periodic.copy()
-            if right <= left:
-                right += period
-                t_local = np.where(t_local < left, t_local + period, t_local)
-
-            if width is None:
-                base_half_width = 0.5 * (right - left)
-            else:
-                base_half_width = float(width)
-            half_width = max(base_half_width / locality, 1e-12)
-            raw[j] = sbs_basis(t_local, left, right, half_width=half_width, order=order)
-    else:
-        midpoints = 0.5 * (centers[:-1] + centers[1:])
-        bounds = np.empty(k + 1, dtype=float)
-        bounds[1:-1] = midpoints
-        bounds[0] = centers[0] - (midpoints[0] - centers[0])
-        bounds[-1] = centers[-1] + (centers[-1] - midpoints[-1])
-
-        for j in range(k):
-            a = bounds[j]
-            b = bounds[j + 1]
-            if width is None:
-                base_half_width = 0.5 * (b - a)
-            else:
-                base_half_width = float(width)
-            half_width = max(base_half_width / locality, 1e-12)
-            raw[j] = sbs_basis(t, a, b, half_width=half_width, order=order)
-
-    # Normalise column-wise (partition of unity).
-    # If ALL kernels vanish at a parameter value (can happen at domain
-    # boundaries when a centre coincides with an endpoint), fall back to
-    # assigning unit weight to the nearest centre so the blended curve
-    # still evaluates to a meaningful value.
-    total = raw.sum(axis=0)                                   # (m,)
-    zero_mask = total < 1e-14
-    if np.any(zero_mask):
-        t_zero = t[zero_mask]
-        if periodic:
-            dist = _circular_distance(np.mod(t_zero, period), centers_periodic, period)
-        else:
-            dist = np.abs(t_zero[:, np.newaxis] - centers[np.newaxis, :])  # (n0, k)
-        nearest = np.argmin(dist, axis=1)                              # (n0,)
-        for pos, nidx in zip(np.where(zero_mask)[0], nearest):
-            raw[nidx, pos] = 1.0
-        total = raw.sum(axis=0)
-        total = np.where(total < 1e-14, 1.0, total)
-
-    return raw / total
+    min_gap = np.diff(centers).min()
+    base_half_width = 0.5 * min_gap if width is None else float(width)
+    half_width = max(base_half_width / locality, 1e-12)
+    return _step_partition(
+        t,
+        centers,
+        half_width=half_width,
+        order=order,
+    )
 
 
 # ---------------------------------------------------------------------------
-# Per-knot weighting (renormalised, non-rational)
+# Legacy per-knot weighting hook
 # ---------------------------------------------------------------------------
 
 def apply_knot_weights(W: np.ndarray, knot_weights: ArrayLike) -> np.ndarray:
     """
-    Apply per-knot scalar weights to an SBS weight matrix and renormalise.
-
-    Given the normalised partition-of-unity weights *W* (shape ``(k, m)``),
-    multiply each row by the corresponding scalar ``w_j`` and renormalise so
-    the result still sums to one column-wise (partition of unity preserved):
-
-    .. math::
-       \\hat{W}_j(t) = \\frac{w_j \\, W_j(t)}{\\sum_l w_l \\, W_l(t)}
-
-    This lets users bias the blend toward any subset of shapes/edges while
-    keeping the curve non-rational.  Equal weights reproduce the original *W*.
-    A weight of 0 suppresses that shape's influence entirely (falls back to
-    equal-weight split if all weights are zero at some *t* value).
-
-    Parameters
-    ----------
-    W:
-        Partition-of-unity weight array of shape *(k, m)*, as returned by
-        :func:`blend_weights`.  Columns must already sum to 1.
-    knot_weights:
-        Scalar weight for each knot/shape, array-like of length *k*.  All
-        values must be non-negative.
-
-    Returns
-    -------
-    np.ndarray
-        Re-weighted array of shape *(k, m)*, columns summing to 1.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from shape_blend_splines.basis import blend_weights, apply_knot_weights
-    >>> t = np.linspace(0, 1, 50, endpoint=False)
-    >>> W = blend_weights(t, np.array([0.0, 0.25, 0.5, 0.75]), periodic=True)
-    >>> W_hat = apply_knot_weights(W, [1.0, 2.0, 1.0, 1.0])
-    >>> np.allclose(W_hat.sum(axis=0), 1.0)
-    True
+    Per-knot renormalisation has been removed from the SBS path.
     """
-    W = np.asarray(W, dtype=float)
-    k = W.shape[0]
-    knot_weights = np.asarray(knot_weights, dtype=float)
-    if knot_weights.shape != (k,):
-        raise ValueError(
-            f"knot_weights length {knot_weights.shape} must match W rows {k}."
-        )
-    if np.any(knot_weights < 0):
-        raise ValueError("All knot_weights must be non-negative.")
-    W_hat = W * knot_weights[:, np.newaxis]   # (k, m)
-    total = W_hat.sum(axis=0)                 # (m,)
-    zero_mask = total < 1e-14
-    if np.any(zero_mask):
-        # Fallback: distribute equally among knots that have non-zero scalar
-        # weight.  This ensures a zero-weighted knot stays at zero even when
-        # it is the only one with SBS support at that t value.
-        nonzero_kw = knot_weights > 0
-        n_nonzero = int(nonzero_kw.sum())
-        if n_nonzero > 0:
-            fallback = np.where(nonzero_kw, 1.0 / n_nonzero, 0.0).astype(float)
-        else:
-            # All scalar weights are zero: fall back to equal for all knots
-            fallback = np.full(k, 1.0 / k)
-        # Apply the fallback only to columns where total was zero
-        W_hat = np.where(zero_mask[np.newaxis, :], fallback[:, np.newaxis], W_hat)
-        total = W_hat.sum(axis=0)
-        total = np.where(total < 1e-14, 1.0, total)
-    return W_hat / total
+    raise NotImplementedError(
+        "Per-knot weight renormalisation has been removed: SBS evaluation is "
+        "now strictly non-rational."
+    )
 
 
 # ---------------------------------------------------------------------------
