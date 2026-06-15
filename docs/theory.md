@@ -166,8 +166,10 @@ Replacing the discontinuous Heaviside with $C^n$-smooth $T_n$ yields:
 * **Locality:** the transition width is controlled by $\sigma$; the parameter
   $\alpha$ in `blend_weights` sets $\sigma = \sigma_0/\alpha$, so higher $\alpha$
   → narrower transitions → stronger locality.
-* **Partition of unity** is restored by normalisation:
-  $W_j(t) = B_{a_j,b_j}(t)\big/\sum_l B_{a_l,b_l}(t)$.
+* **Partition of unity** is enforced directly by a telescoping step
+  construction:
+  $W_0 = 1-U_1,\; W_j = U_j-U_{j+1},\; W_{k-1}=U_{k-1}$,
+  so $\sum_j W_j(t)=1$ without any rational normalisation.
 
 ### 4.2  Mapping to `basis.py`
 
@@ -176,8 +178,7 @@ Replacing the discontinuous Heaviside with $C^n$-smooth $T_n$ yields:
 | $T_n(x)$ | `recursive_smooth_step(x, order=n)` | smooth polynomial step on $[0,1]$ |
 | $S(t; c, \sigma)$ | `smooth_step_at(t, centre=c, half_width=σ)` | centred version |
 | $B_{a,b}(t)$ | `sbs_basis(t, a, b)` | step-difference SBS basis piece |
-| $W_j(t)$ | `blend_weights(t, centers, locality, ...)` | normalised partition-of-unity weights |
-| $\hat{W}_j(t)$ | `apply_knot_weights(W, knot_weights)` | per-knot rescaled + renormalised weights |
+| $W_j(t)$ | `blend_weights(t, centers, locality, ...)` | direct polynomial partition-of-unity weights |
 
 ---
 
@@ -205,9 +206,10 @@ The derivation above assumes:
 | SBS basis | $C^n$-smooth polynomial ($T_n$) | $n$ | Yes (smooth approximation to $p=0$ case) |
 
 The SBS construction replaces the discontinuous Heaviside with a $C^n$ smooth
-analogue.  The resulting basis shares the key structural properties
-(non-negativity, locality, partition of unity) while providing adjustable
-smoothness and transition width via the locality parameter $\alpha$.
+analogue. The resulting basis shares the key structural properties
+(non-negativity, locality, partition of unity) while remaining entirely
+polynomial and providing adjustable smoothness and transition width via the
+locality parameter $\alpha$.
 
 ---
 

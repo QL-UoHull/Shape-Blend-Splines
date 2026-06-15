@@ -367,58 +367,34 @@ class TestIntegration:
 
 
 # ---------------------------------------------------------------------------
-# Per-knot weighting: apply_knot_weights helper
+# Rational reweighting removed
 # ---------------------------------------------------------------------------
 
-class TestApplyKnotWeights:
-    """Tests for the per-knot scalar weighting helper."""
+class TestNonRationalSBS:
+    """Regression tests guarding the non-rational SBS path."""
 
-    def test_equal_weights_reproduce_original(self):
-        """Equal knot_weights must reproduce the input W exactly."""
+    def test_apply_knot_weights_is_disabled(self):
         from shape_blend_splines.basis import blend_weights, apply_knot_weights
         t = np.linspace(0, 1, 60, endpoint=False)
         centers = np.array([0.0, 0.25, 0.5, 0.75])
         W = blend_weights(t, centers, locality=2.0, periodic=True)
-        W_hat = apply_knot_weights(W, [1.0, 1.0, 1.0, 1.0])
-        assert np.allclose(W_hat, W, atol=1e-12)
+        with pytest.raises(NotImplementedError, match="non-rational"):
+            apply_knot_weights(W, [1.0, 1.0, 1.0, 1.0])
 
-    def test_partition_of_unity_preserved(self):
-        """Columns of W_hat must still sum to 1 after reweighting."""
-        from shape_blend_splines.basis import blend_weights, apply_knot_weights
-        t = np.linspace(0, 1, 80, endpoint=False)
-        centers = np.array([0.0, 0.25, 0.5, 0.75])
-        W = blend_weights(t, centers, locality=2.0, periodic=True)
-        W_hat = apply_knot_weights(W, [2.0, 0.5, 3.0, 1.0])
-        assert np.allclose(W_hat.sum(axis=0), 1.0, atol=1e-12)
+    def test_shape_blend_spline_rejects_knot_weights(self):
+        from shape_blend_splines import PeriodicShapeBlendSpline
+        from shape_blend_splines.shapes import line_segment
+        from functools import partial
 
-    def test_zero_weight_suppresses_shape(self):
-        """A zero knot weight at knot j means W_hat[j] == 0 at all t."""
-        from shape_blend_splines.basis import blend_weights, apply_knot_weights
-        # Use periodic domain so multiple knots always overlap
-        t = np.linspace(0.0, 1.0, 80, endpoint=False)
-        centers = np.array([0.0, 0.25, 0.5, 0.75])
-        W = blend_weights(t, centers, locality=2.0, periodic=True)
-        # Zero weight on the first knot
-        kw = np.array([0.0, 1.0, 1.0, 1.0])
-        W_hat = apply_knot_weights(W, kw)
-        assert np.all(W_hat[0] < 1e-12), "Zero-weight knot should have zero influence"
-        assert np.allclose(W_hat.sum(axis=0), 1.0, atol=1e-12)
-
-    def test_negative_weight_raises(self):
-        """Negative knot weights should raise ValueError."""
-        from shape_blend_splines.basis import blend_weights, apply_knot_weights
-        t = np.linspace(0, 1, 10)
-        W = blend_weights(t, np.array([0.0, 0.5, 1.0]), locality=1.0)
-        with pytest.raises(ValueError, match="non-negative"):
-            apply_knot_weights(W, [1.0, -0.5, 1.0])
-
-    def test_shape_mismatch_raises(self):
-        """knot_weights length mismatch should raise ValueError."""
-        from shape_blend_splines.basis import blend_weights, apply_knot_weights
-        t = np.linspace(0, 1, 10)
-        W = blend_weights(t, np.array([0.0, 0.5, 1.0]), locality=1.0)
-        with pytest.raises(ValueError):
-            apply_knot_weights(W, [1.0, 1.0])  # k=3 but only 2 weights
+        corners = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+        edges = [
+            partial(line_segment, p0=corners[0], p1=corners[1]),
+            partial(line_segment, p0=corners[1], p1=corners[2]),
+            partial(line_segment, p0=corners[2], p1=corners[3]),
+            partial(line_segment, p0=corners[3], p1=corners[0]),
+        ]
+        with pytest.raises(ValueError, match="no longer supported"):
+            PeriodicShapeBlendSpline(edges, knot_weights=[1.0, 1.0, 1.0, 1.0])
 
 
 # ---------------------------------------------------------------------------
@@ -428,32 +404,33 @@ class TestApplyKnotWeights:
 class TestSquareEdgeSBS:
     """Tests for the 4-corner-square → 4-edge-line → closed SBS demo pattern."""
 
-    def _build_square_sbs(self, knot_weights=None, locality=2.0):
-        from functools import partial
+    def _build_square_sbs(self, locality=2.0):
         from shape_blend_splines.shapes import line_segment
         from shape_blend_splines import PeriodicShapeBlendSpline
-        corners = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
-        edges = [
-            partial(line_segment, p0=corners[0], p1=corners[1]),
-            partial(line_segment, p0=corners[1], p1=corners[2]),
-            partial(line_segment, p0=corners[2], p1=corners[3]),
-            partial(line_segment, p0=corners[3], p1=corners[0]),
-        ]
-        return PeriodicShapeBlendSpline(edges, locality=locality, knot_weights=knot_weights)
+        corners = np.array([(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)])
+        centers = np.linspace(0.0, 1.0, len(corners), endpoint=False)
+        edges = []
+        for j, center in enumerate(centers):
+            p0 = tuple(corners[j])
+            p1 = tuple(corners[(j + 1) % len(corners)])
+
+            def _edge_shape(t, *, p0=p0, p1=p1, center=center):
+                t = np.asarray(t, dtype=float)
+                local_t = np.mod(t - center + 0.5, 1.0)
+                return line_segment(local_t, p0=p0, p1=p1)
+
+            edges.append(_edge_shape)
+        return PeriodicShapeBlendSpline(edges, t_centers=centers, locality=locality)
 
     def test_square_sbs_is_closed(self):
-        """The periodic SBS over 4 edges should have closed=True and equal weights at t=0 and t=1."""
+        """The periodic SBS over 4 edges should close cleanly at the period seam."""
         sbs = self._build_square_sbs()
         assert sbs.closed is True
-        # Periodic weights must be equal at t=0 and t=1 (same point on periodic domain)
-        W = sbs.weights_at(np.array([0.0, 1.0]))
-        assert np.allclose(W[:, 0], W[:, 1], atol=1e-10), \
-            "Periodic weights should be equal at t=0 and t=1"
-        # Evaluate over full period to verify no errors and finite output
-        t = np.linspace(0, 1, 400, endpoint=False)
+        t = np.array([0.0, 1.0])
+        W = sbs.weights_at(t)
         pts = sbs.evaluate(t)
-        assert pts.shape == (400, 2)
-        assert np.all(np.isfinite(pts))
+        assert np.allclose(W[:, 0], W[:, 1], atol=1e-10)
+        assert np.allclose(pts[0], pts[1], atol=1e-10)
 
     def test_square_sbs_output_shape(self):
         """Evaluate returns correct array shape."""
@@ -469,27 +446,32 @@ class TestSquareEdgeSBS:
         W = sbs.weights_at(t)
         assert np.allclose(W.sum(axis=0), 1.0, atol=1e-10)
 
-    def test_square_sbs_knot_weights_partition_of_unity(self):
-        """With non-uniform knot_weights, partition-of-unity still holds."""
-        sbs = self._build_square_sbs(knot_weights=[2.0, 0.5, 1.0, 3.0])
-        t = np.linspace(0, 1, 100, endpoint=False)
-        W = sbs.weights_at(t)
-        assert np.allclose(W.sum(axis=0), 1.0, atol=1e-10)
+    def test_square_sbs_passes_through_side_midpoints(self):
+        """The 4-edge closed family should align with the side midpoints."""
+        sbs = self._build_square_sbs(locality=2.0)
+        t = np.array([0.0, 0.25, 0.5, 0.75])
+        pts = sbs.evaluate(t)
+        expected = np.array([
+            [0.0, -1.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [-1.0, 0.0],
+        ])
+        assert np.allclose(pts, expected, atol=5e-3)
 
-    def test_square_sbs_equal_knot_weights_same_as_unweighted(self):
-        """Equal knot_weights must give identical curve to no knot_weights."""
-        sbs_plain = self._build_square_sbs()
-        sbs_equal = self._build_square_sbs(knot_weights=[1.0, 1.0, 1.0, 1.0])
-        t = np.linspace(0, 1, 200, endpoint=False)
-        assert np.allclose(sbs_plain.evaluate(t), sbs_equal.evaluate(t), atol=1e-12)
+    def test_square_sbs_progresses_from_square_like_to_ellipse_like(self):
+        """Lower locality should make the 4-point closed curve more ellipse-like."""
+        t = np.linspace(0, 1, 1200, endpoint=False)
+        square_like = self._build_square_sbs(locality=2.0).evaluate(t)
+        intermediate = self._build_square_sbs(locality=0.8).evaluate(t)
+        ellipse_like = self._build_square_sbs(locality=0.4).evaluate(t)
 
-    def test_square_sbs_zero_knot_weight_suppresses_edge(self):
-        """Zero weight on edge 2 means its shape has no influence."""
-        sbs = self._build_square_sbs(knot_weights=[1.0, 1.0, 0.0, 1.0])
-        t = np.linspace(0, 1, 200, endpoint=False)
-        W = sbs.weights_at(t)
-        # Edge 2 weight should be zero everywhere
-        assert np.all(W[2] < 1e-12)
+        square_spread = np.ptp(np.linalg.norm(square_like, axis=1))
+        intermediate_spread = np.ptp(np.linalg.norm(intermediate, axis=1))
+        ellipse_spread = np.ptp(np.linalg.norm(ellipse_like, axis=1))
+
+        assert square_spread > intermediate_spread > ellipse_spread
+        assert ellipse_spread < 0.02
 
 
 # ---------------------------------------------------------------------------
@@ -591,4 +573,3 @@ class TestBSplineStepDifference:
         t = np.linspace(0.0, 1.0, 100)
         W = uniform_bspline_weights(t, n=6, degree=3)
         assert np.allclose(W.sum(axis=0), 1.0, atol=1e-10)
-

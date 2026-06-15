@@ -43,7 +43,6 @@ from importlib.metadata import version, PackageNotFoundError
 
 from .curve import ShapeBlendSpline, PeriodicShapeBlendSpline, ControlPointSpline
 from .blend import ShapeBlender, blend_two_shapes, blend_shape_series, shape_morph
-from .basis import apply_knot_weights
 from . import shapes, basis, curve, blend
 
 try:
@@ -59,7 +58,6 @@ __all__ = [
     "blend_two_shapes",
     "blend_shape_series",
     "shape_morph",
-    "apply_knot_weights",
     "shapes",
     "basis",
     "curve",
