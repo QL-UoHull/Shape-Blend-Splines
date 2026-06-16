@@ -31,6 +31,7 @@ from shape_blend_splines import (
     ShapeBlendSpline,
     ShapeBlender,
 )
+from shape_blend_splines.basis import CUBIC_C2_ORDER
 from shape_blend_splines.shapes import (
     circle_arc,
     ellipse_arc,
@@ -144,6 +145,10 @@ def demo_locality_sweep():
 
 
 def demo_four_point_closed_progression():
+    """
+    4-point periodic closed-curve progression using the paper's cubic piecewise
+    C^2 smooth-step basis (order=2), not a quintic smootherstep.
+    """
     corners = np.array([
         [-1.0, -1.0],
         [1.0, -1.0],
@@ -154,14 +159,19 @@ def demo_four_point_closed_progression():
     t = np.linspace(0.0, 1.0, 900, endpoint=False)
     closed_outline = np.vstack([corners, corners[:1]])
     configs = [
-        (2.0, "Square-like rounded shape"),
-        (0.8, "Intermediate rounded shape"),
-        (0.4, "Ellipse-like smooth shape"),
+        (1.6, "Square-like rounded shape"),
+        (0.95, "Intermediate rounded shape"),
+        (0.55, "Ellipse-like smooth shape"),
     ]
 
     fig, axes = plt.subplots(1, 3, figsize=(14, 4.6))
     for ax, (alpha, title) in zip(axes, configs):
-        sbs = PeriodicShapeBlendSpline(edges, t_centers=centers, locality=alpha)
+        sbs = PeriodicShapeBlendSpline(
+            edges,
+            t_centers=centers,
+            locality=alpha,
+            smooth_order=CUBIC_C2_ORDER,
+        )
         pts = sbs.evaluate(t)
         ax.plot(closed_outline[:, 0], closed_outline[:, 1], ":", color="gray", alpha=0.45)
         ax.plot(pts[:, 0], pts[:, 1], color="black", lw=2.6)
@@ -171,7 +181,10 @@ def demo_four_point_closed_progression():
         ax.set_xlabel("x")
         ax.grid(alpha=0.2)
     axes[0].set_ylabel("y")
-    fig.suptitle("Closed SBS from 4 control points using non-rational polynomial weights", y=1.02)
+    fig.suptitle(
+        "Closed SBS from 4 control points (non-rational, cubic piecewise C^2 smooth-step basis)",
+        y=1.02,
+    )
     save(fig, "demo_four_point_closed_progression.png")
 
 

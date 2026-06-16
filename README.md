@@ -51,7 +51,13 @@ $$
 B_{a,b}(t) = S_b(t) - S_a(t).
 $$
 
-These basis pieces are then normalised to produce weights satisfying
+By default this repository uses the paper-consistent **cubic piecewise C^2**
+smooth-step basis (`order=2` in `recursive_smooth_step`), and deliberately
+does **not** use the classical quintic smootherstep
+\(6t^5 - 15t^4 + 10t^3\).
+
+The basis pieces are then assembled by a telescoping step-difference partition
+to produce weights satisfying
 
 $$
 \sum_j W_j(t)=1.

@@ -5,6 +5,10 @@ This module implements paper-faithful SBS basis functions using smooth
 piecewise-polynomial step functions. The blend weights are assembled directly
 from a telescoping family of step differences, so the SBS path stays entirely
 polynomial and non-rational.
+
+The default smooth-step choice is the paper-consistent *cubic piecewise* C^2
+construction (order=2 in `recursive_smooth_step`). We intentionally do not use
+the classical quintic smootherstep (6t^5 - 15t^4 + 10t^3) in the SBS basis.
 """
 
 from __future__ import annotations
@@ -13,6 +17,8 @@ from math import comb, factorial
 
 import numpy as np
 from numpy.typing import ArrayLike
+
+CUBIC_C2_ORDER = 2
 
 
 # ---------------------------------------------------------------------------
@@ -26,8 +32,15 @@ def recursive_smooth_step(x: ArrayLike, order: int = 2) -> np.ndarray:
     .. math::
        T_n(x) = \\frac{1}{(n+1)!}
        \\sum_{j=0}^{n+1}(-1)^j\\binom{n+1}{j}\\max((n+1)x-j,0)^{n+1}
+
+    Notes
+    -----
+    `order=2` yields the paper-consistent C^2 smooth step formed by three
+    cubic polynomial pieces.
     """
     n = int(order)
+    if n < 0:
+        raise ValueError("order must be non-negative.")
     x = np.clip(np.asarray(x, dtype=float), 0.0, 1.0)
     t = (n + 1) * x
     prefactor = 1.0 / factorial(n + 1)
@@ -41,7 +54,7 @@ def smooth_step_at(
     t: ArrayLike,
     centre: float,
     half_width: float,
-    order: int = 2,
+    order: int = CUBIC_C2_ORDER,
     rising: bool = True,
 ) -> np.ndarray:
     """
@@ -62,7 +75,7 @@ def sbs_basis(
     a: float,
     b: float,
     half_width: float | None = None,
-    order: int = 2,
+    order: int = CUBIC_C2_ORDER,
 ) -> np.ndarray:
     """
     SBS basis over interval [a, b] using two smooth step functions.
@@ -116,7 +129,7 @@ def blend_weights(
     *,
     periodic: bool = False,
     period: float = 1.0,
-    order: int = 2,
+    order: int = CUBIC_C2_ORDER,
 ) -> np.ndarray:
     """
     Compute direct non-rational SBS weights for all shape centres.
@@ -152,7 +165,9 @@ def blend_weights(
     period:
         Period length used when ``periodic=True``.
     order:
-        Smooth-step polynomial order used in the SBS basis.
+        Smooth-step polynomial order used in the SBS basis. The default is the
+        paper-consistent cubic piecewise C^2 step (`order=2`), not a quintic
+        smootherstep.
 
     Returns
     -------
