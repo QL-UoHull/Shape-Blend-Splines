@@ -46,7 +46,7 @@ from typing import Callable, Sequence
 import numpy as np
 from numpy.typing import ArrayLike
 
-from .basis import blend_weights
+from .basis import CUBIC_C2_ORDER, blend_weights
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +73,10 @@ class ShapeBlendSpline:
     blend_width:
         Support half-width σ for the weight functions.  Defaults to the
         mean inter-centre spacing.
+    smooth_order:
+        Smooth-step order used in SBS weights. Defaults to the paper-consistent
+        cubic piecewise C^2 basis (`order=2`), intentionally avoiding the
+        classical quintic smootherstep.
     closed:
         If True, evaluate weights on a periodic domain so the first and last
         shapes are neighbours. This is the standard closed-curve SBS setting.
@@ -102,6 +106,7 @@ class ShapeBlendSpline:
         t_centers: ArrayLike | None = None,
         locality: float = 1.0,
         blend_width: float | None = None,
+        smooth_order: int = CUBIC_C2_ORDER,
         closed: bool = False,
         period: float = 1.0,
         knot_weights: ArrayLike | None = None,
@@ -131,6 +136,7 @@ class ShapeBlendSpline:
 
         self.locality = float(locality)
         self.blend_width = blend_width
+        self.smooth_order = int(smooth_order)
 
         if knot_weights is not None:
             raise ValueError(
@@ -166,6 +172,7 @@ class ShapeBlendSpline:
             self.blend_width,
             periodic=self.closed,
             period=self.period,
+            order=self.smooth_order,
         )
 
         # Weighted sum of shape evaluations
@@ -218,6 +225,7 @@ class ShapeBlendSpline:
             self.blend_width,
             periodic=self.closed,
             period=self.period,
+            order=self.smooth_order,
         )
         return W
 
@@ -232,6 +240,7 @@ class ShapeBlendSpline:
         return (
             f"ShapeBlendSpline(n_shapes={len(self.shapes)}, "
             f"locality={self.locality}, "
+            f"smooth_order={self.smooth_order}, "
             f"closed={self.closed}, "
             f"t_centers={self.t_centers})"
         )
@@ -355,6 +364,7 @@ class PeriodicShapeBlendSpline(ShapeBlendSpline):
         t_centers: ArrayLike | None = None,
         locality: float = 1.0,
         blend_width: float | None = None,
+        smooth_order: int = CUBIC_C2_ORDER,
         period: float = 1.0,
         knot_weights: ArrayLike | None = None,
     ) -> None:
@@ -363,6 +373,7 @@ class PeriodicShapeBlendSpline(ShapeBlendSpline):
             t_centers=t_centers,
             locality=locality,
             blend_width=blend_width,
+            smooth_order=smooth_order,
             closed=True,
             period=period,
             knot_weights=knot_weights,
@@ -416,6 +427,7 @@ class ControlPointSpline(ShapeBlendSpline):
         shape_fn=None,
         locality: float = 1.0,
         blend_width: float | None = None,
+        smooth_order: int = CUBIC_C2_ORDER,
         closed: bool = False,
     ) -> None:
         from .shapes import from_control_points
@@ -444,6 +456,7 @@ class ControlPointSpline(ShapeBlendSpline):
             t_centers=t_centers,
             locality=locality,
             blend_width=blend_width,
+            smooth_order=smooth_order,
             closed=closed,
         )
         self.control_pts = control_pts

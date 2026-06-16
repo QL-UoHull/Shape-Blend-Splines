@@ -39,6 +39,20 @@ class TestBasisFunctions:
         assert np.isclose(y[0], 0.0)
         assert np.isclose(y[-1], 1.0)
 
+    def test_recursive_smooth_step_order2_uses_piecewise_cubic(self):
+        from shape_blend_splines.basis import recursive_smooth_step
+        x = np.array([0.0, 0.125, 0.25, 1.0 / 3.0])
+        expected = 4.5 * x ** 3  # First cubic piece on [0, 1/3]
+        y = recursive_smooth_step(x, order=2)
+        assert np.allclose(y, expected, atol=1e-12)
+
+    def test_recursive_smooth_step_order2_is_not_quintic_smootherstep(self):
+        from shape_blend_splines.basis import recursive_smooth_step
+        x = np.array([0.25, 0.75])
+        y = recursive_smooth_step(x, order=2)
+        quintic = 6.0 * x ** 5 - 15.0 * x ** 4 + 10.0 * x ** 3
+        assert not np.allclose(y, quintic, atol=1e-12)
+
     def test_smooth_step_at_orientations(self):
         from shape_blend_splines.basis import smooth_step_at
         t = np.array([-10.0, 10.0])
@@ -179,10 +193,12 @@ class TestShapeBlendSpline:
 
     def test_periodic_construction(self):
         from shape_blend_splines.curve import PeriodicShapeBlendSpline
+        from shape_blend_splines.basis import CUBIC_C2_ORDER
         from shape_blend_splines.shapes import circle_arc, ellipse_arc, star_arc
         sbs = PeriodicShapeBlendSpline([circle_arc, ellipse_arc, star_arc], locality=2.0)
         assert len(sbs) == 3
         assert sbs.closed is True
+        assert sbs.smooth_order == CUBIC_C2_ORDER
 
     def test_evaluate_shape(self):
         from shape_blend_splines.curve import ShapeBlendSpline
