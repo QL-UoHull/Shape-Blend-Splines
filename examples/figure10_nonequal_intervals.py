@@ -1,21 +1,10 @@
 """
-figure10_nonequal_intervals.py — PSP splines on non-equal-spaced intervals.
+Fig. 10 demos using line-segment primitive blending (Eq. 22).
 
-Reproduces the spirit of Fig. 10 from:
-    Q. Li, J. Tian, "Partial shape-preserving splines",
-    Computer-Aided Design 43 (2011) 394-409.
-
-Key insight: **long intervals create near-straight flat segments and embedded
-right-angle corners** while the whole curve stays globally smooth (C^{n-1}).
-This is the distinctive capability of PSP splines that B-splines cannot achieve
-without sacrificing smoothness.
-
-Output:
-    figure10_nonequal_intervals.png
-    figure10_square_spiral.png
-
-Run:
-    python examples/figure10_nonequal_intervals.py
+Li & Tian Fig. 10 is produced by blending *edge primitives* P_i(t), not
+constant control points.  Each edge primitive is a parametric line segment on
+its own interval, so a non-empty flat-top reproduces a whole straight edge.
+This is the key behavior that point blending cannot produce.
 """
 
 import os
@@ -28,8 +17,9 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from shape_blend_splines.curve import WeightedControlPolygonPSPSpline
-from shape_blend_splines.basis import psp_partition
+from shape_blend_splines.basis import knots_from_weights
+from shape_blend_splines.curve import BlendedPrimitivePSPSpline, PeriodicPSPSpline
+from shape_blend_splines.shapes import closed_polygon_edges
 
 OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -41,143 +31,120 @@ def save(fig, filename):
     print(f"Saved: {path}")
 
 
+def _shade_flat_tops(ax, spline, t, pts, alpha=0.4):
+    """Shade flat-top (shape-preserving) curve segments."""
+    for left, right in spline.shape_preserving_intervals():
+        if left < right:
+            mask = (t >= left) & (t <= right)
+            if np.count_nonzero(mask) > 2:
+                seg = pts[mask]
+                tangent = np.gradient(seg, axis=0)
+                normal = np.column_stack([-tangent[:, 1], tangent[:, 0]])
+                norm = np.linalg.norm(normal, axis=1, keepdims=True)
+                normal = normal / np.clip(norm, 1e-12, None)
+                up = seg + 0.03 * normal
+                down = seg - 0.03 * normal
+                ribbon = np.vstack([up, down[::-1]])
+                ax.fill(
+                    ribbon[:, 0], ribbon[:, 1],
+                    color="gold", alpha=alpha, linewidth=0
+                )
+
+
+def _open_polyline_edges(vertices, knots):
+    """Edge primitives for an open polyline over intervals [k_i, k_{i+1}]."""
+    verts = np.asarray(vertices, dtype=float)
+    knot_arr = np.asarray(knots, dtype=float)
+    edges = []
+    for i in range(len(verts) - 1):
+        p0, p1 = verts[i], verts[i + 1]
+        a, b = knot_arr[i], knot_arr[i + 1]
+        span = b - a
+
+        def edge(t, p0=p0, p1=p1, a=a, span=span):
+            tt = np.atleast_1d(np.asarray(t, dtype=float))
+            s = np.clip((tt - a) / span, 0.0, 1.0)
+            return (1.0 - s)[:, np.newaxis] * p0 + s[:, np.newaxis] * p1
+
+        edges.append(edge)
+    return edges
+
+
 def demo_nonequal_intervals():
-    """
-    Cubic PSP curves on non-equal spaced intervals.
-    Long intervals create near-straight segments; short ones create corners.
-    """
-    # Control polygon — open zigzag
-    ctrl = np.array([
-        [0.0, 0.0],
-        [1.0, 1.5],
-        [2.0, 0.0],
-        [3.0, 1.5],
-        [4.0, 0.0],
-        [5.0, 1.5],
+    """Top+middle row structure: square family via edge-primitive blending."""
+    square = np.array([
+        [-1.0, -1.0],
+        [1.0, -1.0],
+        [1.0, 1.0],
+        [-1.0, 1.0],
     ], dtype=float)
 
-    n = 3
-    delta = 0.3
-
-    # Compare equal vs non-equal weights
-    weights_equal = np.ones(len(ctrl))
-    weights_long_mid = [0.3, 0.3, 2.0, 2.0, 0.3, 0.3]
-    weights_long_ends = [2.0, 0.3, 0.3, 0.3, 0.3, 2.0]
-    weights_alternating = [2.0, 0.3, 2.0, 0.3, 2.0, 0.3]
-
     configs = [
-        (weights_equal, "Equal weights\n(uniform PSP)"),
-        (weights_long_mid, "Long middle intervals\n(near-straight in middle)"),
-        (weights_long_ends, "Long end intervals\n(drawn toward endpoints)"),
-        (weights_alternating, "Alternating long/short\n(zigzag emphasis)"),
+        ("Rounded square", [2.6, 2.6, 2.6, 2.6], 0.40),
+        ("Rounded square (tighter)", [2.6, 2.6, 2.6, 2.6], 0.22),
+        ("Teardrop / leaf A", [4.0, 1.2, 0.8, 1.2], 0.38),
+        ("Teardrop / leaf B", [4.8, 1.0, 0.6, 1.0], 0.44),
+        ("Ellipse-like A", [1.0, 1.0, 1.0, 1.0], 0.75),
+        ("Ellipse-like B", [1.0, 1.0, 1.0, 1.0], 0.95),
     ]
 
-    fig, axes = plt.subplots(1, 4, figsize=(16, 4.5))
-    for ax, (w, title) in zip(axes, configs):
-        spl = WeightedControlPolygonPSPSpline(ctrl, weights=w, n=n, delta=delta)
-        t = np.linspace(spl.knots[0], spl.knots[-1], 600)
-        pts = spl.evaluate(t)
+    fig, axes = plt.subplots(2, 3, figsize=(12.5, 8.0))
+    for ax, (title, weights, delta) in zip(axes.flat, configs):
+        knots = knots_from_weights(weights)
+        edges = closed_polygon_edges(square, knots=knots)
+        spline = PeriodicPSPSpline(edges, knots=knots, n=3, delta=delta)
+        t = np.linspace(knots[0], knots[-1], 1600)
+        pts = spline.evaluate(t)
 
-        # Shade flat-tops
-        for left, right in spl.shape_preserving_intervals():
-            if left < right:
-                mask = (t >= left) & (t <= right)
-                if np.any(mask):
-                    ax.fill_between(
-                        pts[mask, 0], pts[mask, 1] - 0.05,
-                        pts[mask, 1] + 0.05,
-                        color="gold", alpha=0.6, linewidth=0
-                    )
-
-        ax.plot(pts[:, 0], pts[:, 1], color="steelblue", lw=2.2)
-        ax.plot(ctrl[:, 0], ctrl[:, 1], "o--", color="tomato",
-                lw=1.0, ms=5, alpha=0.7)
+        _shade_flat_tops(ax, spline, t, pts)
+        ax.plot(pts[:, 0], pts[:, 1], color="steelblue", lw=2.3)
+        poly_closed = np.vstack([square, square[0]])
+        ax.plot(poly_closed[:, 0], poly_closed[:, 1], "o:", color="gray", lw=1.0, ms=4, alpha=0.65)
         ax.set_aspect("equal")
-        ax.set_title(title, fontsize=9)
-        ax.grid(alpha=0.15)
+        ax.set_title(f"{title}\n$\\delta={delta}$, weights={weights}", fontsize=9)
+        ax.grid(alpha=0.16)
 
-    axes[0].set_ylabel("y")
     fig.suptitle(
-        "Fig. 10: Cubic PSP curves on non-equal-spaced intervals\n"
-        "(gold = flat-top / shape-preservation region;  Li & Tian 2011)",
-        fontsize=11, y=1.02
+        "Fig. 10 structure (top+middle): square edge primitives blended by PSP basis\n"
+        "Gold = flat-top shape-preservation (whole straight edges reproduced on non-empty flat-tops)",
+        fontsize=11, y=0.98,
     )
+    fig.tight_layout()
     save(fig, "figure10_nonequal_intervals.png")
 
 
 def demo_square_spiral():
-    """
-    Square-spiral–like closed curve using PSP splines on non-equal intervals.
-
-    Long intervals at corners create near-right-angle turns embedded in an
-    otherwise smooth closed curve.  This is impossible with a standard
-    B-spline without explicit knot multiplicity (which destroys C^{n-1}).
-    """
-    # A roughly square control polygon
-    R = 2.0
-    ctrl = np.array([
-        [-R, -R],   # corner 0 (SW)
-        [-R/4, -R], # bottom edge midpoint
-        [ R,  -R],  # corner 1 (SE)
-        [ R, -R/4], # right edge midpoint
-        [ R,   R],  # corner 2 (NE)
-        [ R/4,  R], # top edge midpoint
-        [-R,   R],  # corner 3 (NW)
-        [-R,  R/4], # left edge midpoint
+    """Bottom row structure: open square-spiral with delta sweep."""
+    spiral = np.array([
+        [-0.82, -0.72], [-0.18, -0.72], [-0.18, -0.18], [-0.70, -0.18],
+        [-0.70, -0.60], [-0.30, -0.60], [-0.30, -0.30], [-0.56, -0.30],
+        [-0.56, -0.47], [-0.40, -0.47], [-0.40, -0.38], [-0.48, -0.38],
     ], dtype=float)
+    seg_lengths = np.linalg.norm(np.diff(spiral, axis=0), axis=1)
+    weights = np.maximum(seg_lengths, 0.08)
+    knots = knots_from_weights(weights)
+    edges = _open_polyline_edges(spiral, knots)
 
-    n = 3
-    delta = 0.3
-
-    # Long weights at corners (even indices), short at midpoints
-    weights_corner_emphasis = [2.0, 0.3, 2.0, 0.3, 2.0, 0.3, 2.0, 0.3]
-    weights_equal = np.ones(len(ctrl))
-
-    fig, axes = plt.subplots(1, 3, figsize=(14, 5.0))
-    for ax, (w, title, lw) in zip(axes, [
-        (weights_equal, "Equal weights\n(rounded curve)", "steelblue"),
-        (weights_corner_emphasis, "Long corner intervals\n(square-spiral–like)", "tomato"),
-        (None, None, None),  # delta sweep
-    ]):
-        if lw is None:
-            # Delta sweep
-            for delta_v, c in zip([0.2, 0.5, 0.9], ["navy", "steelblue", "lightblue"]):
-                spl = WeightedControlPolygonPSPSpline(
-                    ctrl, weights=weights_corner_emphasis, n=n, delta=delta_v
-                )
-                t = np.linspace(spl.knots[0], spl.knots[-1], 600)
-                pts = spl.evaluate(t)
-                ax.plot(pts[:, 0], pts[:, 1], color=c, lw=2.0, label=rf"$\delta={delta_v}$")
-            ax.set_title(
-                "Same corner weights,\ndifferent delta (extra design dim.)"
-            )
-            ax.legend(fontsize=8)
-        else:
-            spl = WeightedControlPolygonPSPSpline(ctrl, weights=w, n=n, delta=delta)
-            t = np.linspace(spl.knots[0], spl.knots[-1], 600)
-            pts = spl.evaluate(t)
-            # Shade flat-tops
-            for left, right in spl.shape_preserving_intervals():
-                if left < right:
-                    mask = (t >= left) & (t <= right)
-                    if np.any(mask):
-                        ax.fill_between(pts[mask, 0], pts[mask, 1] - 0.06,
-                                        pts[mask, 1] + 0.06,
-                                        color="gold", alpha=0.5, linewidth=0)
-            ax.plot(pts[:, 0], pts[:, 1], color=lw, lw=2.2)
-            ax.set_title(title)
-        ax.plot(ctrl[:, 0], ctrl[:, 1], "o--", color="gray",
-                lw=0.9, ms=5, alpha=0.5)
+    fig, axes = plt.subplots(1, 3, figsize=(13.2, 4.6))
+    for ax, delta in zip(axes, [0.05, 0.10, 0.18]):
+        spline = BlendedPrimitivePSPSpline(edges, knots=knots, n=3, delta=delta)
+        t = np.linspace(knots[0], knots[-1], 2200)
+        pts = spline.evaluate(t)
+        _shade_flat_tops(ax, spline, t, pts, alpha=0.35)
+        ax.plot(pts[:, 0], pts[:, 1], color="steelblue", lw=2.2)
+        ax.plot(
+            spiral[:, 0], spiral[:, 1],
+            linestyle=":", color="gray", lw=1.0, marker="o", ms=2.8, alpha=0.7
+        )
         ax.set_aspect("equal")
-        ax.grid(alpha=0.15)
-        ax.set_xlabel("x")
+        ax.set_title(rf"$\delta={delta}$", fontsize=10)
+        ax.grid(alpha=0.16)
 
-    axes[0].set_ylabel("y")
     fig.suptitle(
-        "Fig. 10: Square-spiral–like PSP curves on non-equal intervals\n"
-        "(gold = flat-top shape-preservation;  Li & Tian 2011, Fig. 10)",
-        fontsize=11, y=1.02
+        "Fig. 10 structure (bottom): nested square-spiral via open edge-primitive PSP blending",
+        fontsize=11, y=0.98,
     )
+    fig.tight_layout()
     save(fig, "figure10_square_spiral.png")
 
 
