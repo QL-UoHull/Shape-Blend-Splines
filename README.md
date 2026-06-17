@@ -1,4 +1,4 @@
-# Shape-Blend-Splines
+# Partial Shape-Preserving Splines (PSP Splines)
 
 <p align="center">
   <a href="https://colab.research.google.com/github/QL-UoHull/Shape-Blend-Splines/blob/main/notebooks/interactive_shape_blend_demo.ipynb">
@@ -10,110 +10,75 @@
   <img src="https://img.shields.io/badge/python-3.8%2B-blue" alt="Python 3.8+"/>
 </p>
 
-> **Shape Blend Splines (SBS)** are non-rational, partition-of-unity spline curves built by blending whole parametric shapes with smooth polynomial basis functions.
+> **PSP splines are B-spline-like, achieve what NURBS achieves, are *more flexible*
+> than NURBS — and are NOT rational.**
 
-This repository provides a Python implementation of the Shape Blend Spline framework from Li (2011), with a focus on the distinctive idea that makes SBS different from classical control-point-only spline workflows:
+This repository provides a faithful Python implementation of the Partial Shape-Preserving (PSP) spline technique from:
 
-- the curve is a **non-rational weighted sum**,
-- the weights are **piecewise-polynomial smooth-step differences**, and
-- the blended object is assembled from **whole parametric shape functions** rather than only from control points.
+> Q. Li, J. Tian, **"Partial shape-preserving splines"**,
+> *Computer-Aided Design* **43** (2011) 394–409.
 
-That makes SBS useful for familiar spline tasks such as open-curve design, closed loops, and control-point-driven modelling, while also exposing a capability that typical NURBS demos do not show directly: **local preservation and transition between entire geometric primitives or edge lines** with tunable locality.
+---
 
-## Reference
+## Why PSP splines?
 
-> Q. Li, **"Shape Blend Splines"**  
-> *Computer-Aided Design*, **43**(8), 990–1001, 2011.  
-> DOI: [10.1016/j.cad.2011.01.006](https://doi.org/10.1016/j.cad.2011.01.006)
+| Property | B-spline | NURBS | **PSP spline** |
+|---|---|---|---|
+| Polynomial (non-rational) | ✓ | ✗ (rational) | **✓** |
+| Partition of unity | ✓ | ✓ | **✓** |
+| C^{n-1} smoothness | ✓ | ✓ | **✓** |
+| Local control | ✓ | ✓ | **✓** |
+| Basis reaches value 1 (flat-top) | ✗ | via rational weights | **✓** |
+| Exact primitive reproduction | ✗ | ✓ | **✓** |
+| Weights without rational denominator | N/A | ✗ | **✓** (knot spacings) |
+| Extra design dimension δ | ✗ | ✗ | **✓** |
+| Selective/partial interpolation | ✗ | ✗ | **✓** |
 
-## Theory
+PSP splines keep all the nice B-spline properties, then add:
 
-See [`docs/theory.md`](docs/theory.md) for a formal derivation of **how each
-B-spline basis function can be expressed as a difference of two smooth step
-functions**, the connection to the SBS step-difference basis
-$B_{a,b}(t) = S_b(t) - S_a(t)$ in `basis.py`, and references.
+1. **Flat-top shape preservation** — the basis B^{(n)} equals *exactly 1* on
+   [a+δ, b−δ], the *shape-preserving interval*. The corresponding
+   control point/primitive is reproduced exactly there. Classical B-splines
+   never reach 1; NURBS achieves this only via a rational denominator.
 
-## Core formula
+2. **Weights as knot spacings (non-rational)** — weight w_i = a_{i+1} − a_i.
+   A larger weight ⇒ wider interval ⇒ stronger pull toward P_i, exactly
+   like a NURBS weight but with **no rational denominator** (Eq. 20–21).
 
-For constituent parametric shapes \(\mathbf{S}_j(t)\) and partition-of-unity weights \(W_j(t)\), the blended curve is
+3. **Extra design dimension δ** — same control polygon + same weights + different
+   δ gives a *different* curve family (Figs. 9b, 11a vs 11b). NURBS has no
+   equivalent.
 
-$$
-\mathbf{C}(t) = \sum_{j=0}^{k-1} W_j(t)\,\mathbf{S}_j(t).
-$$
+4. **Selective interpolation** — control points whose interval width ≥ 2δ are
+   interpolated *exactly*; others are merely approached (Fig. 11). Multiple
+   straight segments can be embedded in an otherwise smooth freeform curve.
 
-This implementation follows that non-rational form directly.
+---
 
-### Basis construction
+## Core formula (Eq. 17)
 
-For an interval \([a,b]\), SBS uses smooth polynomial step functions and forms
+**Any PSP basis is the difference of two smooth unit steps:**
 
-$$
-B_{a,b}(t) = S_b(t) - S_a(t).
-$$
+$$B^{(n)}_{[a,b],\delta}(x) = H_{n,\delta}(x-a) - H_{n,\delta}(x-b)$$
 
-By default this repository uses the paper-consistent **cubic piecewise C^2**
-smooth-step basis (`order=2` in `recursive_smooth_step`), and deliberately
-does **not** use the classical quintic smootherstep
-\(6t^5 - 15t^4 + 10t^3\).
+where H_{n,δ}(x) = H_n(nx/δ) and H_n is a smooth piecewise polynomial
+(C^{n-1}) that rises from 0 to 1 over [−δ, δ].
 
-The basis pieces are then assembled by a telescoping step-difference partition
-to produce weights satisfying
+### Flat-top = shape preservation
 
-$$
-\sum_j W_j(t)=1.
-$$
+The basis equals **1 exactly** on [a+δ, b−δ].  On the flat-top, the
+corresponding control point (or primitive) is reproduced exactly.
+Smaller δ → wider flat-top; larger δ → bump shape (Fig. 5).
 
-The locality parameter \(\alpha\) controls how concentrated each weight is around its centre:
+### Partition of unity (Eq. 18)
 
-- **small \(\alpha\)** → broader, more global mixing,
-- **large \(\alpha\)** → narrower support and stronger local shape identity.
+For knots t_0 ≤ … ≤ t_m, the PSP basis matrix satisfies:
 
-## What this repository highlights
+$$\sum_i B^{(n)}_{[t_i,t_{i+1}],\delta}(x) = 1 \quad \forall x \in [t_0+\delta,\ t_m-\delta]$$
 
-### 1. True shape blending
-The primary API blends **whole shapes** evaluated at the same global parameter \(t\), not a rational control-point denominator.
+No rational normalization — ever.
 
-### 2. Open and closed curves
-The package supports both:
-- **open SBS curves** with ordered centres, and
-- **closed periodic SBS curves** where the first and last shapes are neighbours.
-
-### 3. Locality-aware design
-Unlike a purely global average, the same set of component shapes can produce either a smooth global hybrid or a strongly local patchwork of recognisable shape regions by changing only \(\alpha\).
-
-### 4. Familiar and beyond-familiar workflows
-The repository includes:
-- `ControlPointSpline` for control-point-driven curve design,
-- `ShapeBlendSpline` for open shape sequences,
-- `PeriodicShapeBlendSpline` for closed periodic loops,
-- `ShapeBlender` for simple global weighted baselines.
-
-This means the package can cover many familiar spline-style modelling tasks while also illustrating SBS-specific capabilities that are awkward to express as standard control-point NURBS examples.
-
-> **Accuracy note:** this repository does **not** claim to replace every strength of NURBS. In particular, rational NURBS remain the classical tool for exact conics. The strength of SBS here is different: locality-aware blending of entire parametric primitives with polynomial partition-of-unity weights.
-
-## Repository structure
-
-```text
-Shape-Blend-Splines/
-├── shape_blend_splines/
-│   ├── __init__.py
-│   ├── basis.py
-│   ├── blend.py
-│   ├── curve.py
-│   └── shapes.py
-├── notebooks/
-│   └── interactive_shape_blend_demo.ipynb
-├── docs/
-│   └── theory.md
-├── examples/
-│   └── basic_demo.py
-├── tests/
-│   └── test_smoke.py
-├── pyproject.toml
-├── setup.py
-└── README.md
-```
+---
 
 ## Installation
 
@@ -124,188 +89,162 @@ pip install -r requirements.txt
 pip install -e .[dev,notebook]
 ```
 
+---
+
 ## Quick start
 
-### Closed SBS from 4 control points and 4 edge lines
+### Weighted control-polygon curve (Fig. 9)
 
 ```python
 import numpy as np
-from shape_blend_splines import PeriodicShapeBlendSpline
-from shape_blend_splines.shapes import line_segment
+from shape_blend_splines import WeightedControlPolygonPSPSpline
 
-# 4 corners of a square (counter-clockwise)
-corners = np.array([(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)])
-centers = np.linspace(0.0, 1.0, len(corners), endpoint=False)
+ctrl = np.array([[0,0], [1,1], [2,0], [3,1], [4,0]], dtype=float)
 
-def closed_edge_cycle_shapes(corners):
-    shapes = []
-    for j, center in enumerate(centers):
-        p0 = tuple(corners[j])
-        p1 = tuple(corners[(j + 1) % len(corners)])
+# Equal weights (uniform PSP)
+spl = WeightedControlPolygonPSPSpline(ctrl, n=3, delta=0.4)
+t = np.linspace(spl.knots[0], spl.knots[-1], 300)
+pts = spl.evaluate(t)
 
-        def edge_shape(t, p0=p0, p1=p1, center=center):
-            local_t = np.mod(np.asarray(t) - center + 0.5, 1.0)
-            return line_segment(local_t, p0=p0, p1=p1)
-
-        shapes.append(edge_shape)
-    return shapes
-
-edges = closed_edge_cycle_shapes(corners)
-
-# Closed periodic SBS — same 4 inputs, different polynomial localities
-sbs = PeriodicShapeBlendSpline(edges, t_centers=centers, locality=2.0)
-t = np.linspace(0.0, 1.0, 600, endpoint=False)
-square_like = sbs.evaluate(t)
-rounded = PeriodicShapeBlendSpline(edges, t_centers=centers, locality=0.8).evaluate(t)
-ellipse_like = PeriodicShapeBlendSpline(edges, t_centers=centers, locality=0.4).evaluate(t)
+# Unequal weights: P_1 gets a long interval → interpolated exactly
+weights = [1, 3, 1, 1, 1]
+spl2 = WeightedControlPolygonPSPSpline(ctrl, weights=weights, n=3, delta=0.4)
+print("Interpolated:", spl2.interpolated_control_points())  # [1]
 ```
 
-### Open blend across a sequence of shapes
+### Primitive blending (Eq. 22)
 
 ```python
+from shape_blend_splines import BlendedPrimitivePSPSpline
 import numpy as np
-from functools import partial
-from shape_blend_splines import ShapeBlendSpline
-from shape_blend_splines.shapes import line_segment, circle_arc, from_control_points
 
-shapes = [
-    partial(line_segment, p0=(-1.8, -0.5), p1=(1.8, -0.5)),
-    partial(circle_arc, center=(0.0, -0.1), radius=1.3,
-            theta_start=0.95*np.pi, theta_end=0.05*np.pi),
-    partial(from_control_points, control_pts=np.array([
-        [-1.7, -0.3],
-        [-0.8,  1.2],
-        [ 0.6,  0.4],
-        [ 1.8,  1.1],
-    ])),
-]
+def arc(t):
+    return np.column_stack([t, np.sin(t)])
 
-sbs = ShapeBlendSpline(shapes, locality=2.0)
-curve = sbs.evaluate(np.linspace(0.0, 1.0, 600))
+def line(t):
+    return np.column_stack([t, np.zeros_like(t)])
+
+spl = BlendedPrimitivePSPSpline([arc, line], knots=[0, 3, 6], n=3, delta=0.8)
+pts = spl.evaluate(np.linspace(0, 6, 300))
 ```
 
-### Control-point workflow
+### Hermite position + velocity (Eq. 23)
 
 ```python
+from shape_blend_splines import HermitePSPSpline
 import numpy as np
-from shape_blend_splines import ControlPointSpline
 
-control_pts = np.array([
-    [0.0, 0.0],
-    [1.0, 1.8],
-    [3.0, 0.8],
-    [4.0, 2.4],
-    [5.5, 0.2],
-])
+pts = np.array([[0,0],[2,1],[4,0]], dtype=float)
+vel = np.array([[1,0],[0,-1],[1,0]], dtype=float)
+knots = [0, 2, 4, 6]
 
-open_curve = ControlPointSpline(control_pts, locality=2.0)
-closed_loop = ControlPointSpline(control_pts, locality=2.0, closed=True)
+herm = HermitePSPSpline(pts, vel, knots=knots, delta=0.6)
+curve = herm.evaluate(np.linspace(0, 6, 300))
+# P(t_i) = pts[i] and P'(t_i) = vel[i] exactly
 ```
 
-## Main APIs
+### Backward compatibility (deprecated aliases)
 
-| API | Role |
-|-----|------|
-| `ShapeBlendSpline` | open non-rational SBS curve through an ordered shape sequence |
-| `PeriodicShapeBlendSpline` | closed periodic SBS curve with wrap-around blending |
-| `ControlPointSpline` | control-point-driven convenience interface |
-| `ShapeBlender` | global weighted blend baseline |
-| `blend_shape_series` | helper for open SBS sequences |
-| `blend_two_shapes` | simple global interpolation helper |
-| `shape_morph` | frame-by-frame global blend sequence |
+```python
+# Old API still works but emits DeprecationWarning
+from shape_blend_splines import PeriodicShapeBlendSpline  # deprecated
+from shape_blend_splines.shapes import circle_arc, star_arc
+sbs = PeriodicShapeBlendSpline([circle_arc, star_arc], locality=2.0)
+```
 
-## Built-in shape primitives
+---
+
+## Main demos
+
+Run these scripts to reproduce the paper's key figures:
+
+```bash
+python examples/basic_demo.py             # H_n, PSP basis, partition, B-spline case, Fig. 9
+python examples/figure10_nonequal_intervals.py  # Fig. 10: non-equal intervals + square-spiral
+python examples/figure11_selective_interpolation.py  # Fig. 11: selective interpolation
+python examples/hermite_motion.py         # Eq. 23: Hermite position+velocity
+```
+
+---
+
+## Repository structure
+
+```text
+Shape-Blend-Splines/
+├── shape_blend_splines/
+│   ├── __init__.py          — public API + citations
+│   ├── basis.py             — H_n, H_{n,δ}, PSP basis, partition (Eqs. 6,11,17,18)
+│   ├── curve.py             — PSPSpline, WeightedControlPolygon, BlendedPrimitive, Hermite
+│   ├── blend.py             — global weighted baseline (NOT the paper technique)
+│   └── shapes.py            — parametric primitives (line, arc, sine, helix, …)
+├── notebooks/
+│   └── interactive_shape_blend_demo.ipynb  — interactive PSP explorer
+├── docs/
+│   └── theory.md            — complete mathematical reference
+├── examples/
+│   ├── basic_demo.py
+│   ├── figure10_nonequal_intervals.py
+│   ├── figure11_selective_interpolation.py
+│   └── hermite_motion.py
+├── tests/
+│   └── test_smoke.py        — PSP-faithful regression tests
+├── 2011-PSP Splines-final.pdf  — source paper
+└── CITATION.cff
+```
+
+---
+
+## Running tests
+
+```bash
+pytest tests/ -v
+```
+
+---
+
+## API summary
+
+### New paper-faithful API
+
+| Class | Eq. | Description |
+|---|---|---|
+| `PSPSpline` | — | Generic PSP base: control points or callable primitives |
+| `WeightedControlPolygonPSPSpline` | 21 | Weights as knot spacings |
+| `BlendedPrimitivePSPSpline` | 22 | Blend whole parametric primitives |
+| `HermitePSPSpline` | 23 | Interpolate position + velocity |
+| `PeriodicPSPSpline` | — | Closed-loop variant |
 
 | Function | Description |
-|----------|-------------|
-| `line_segment` | straight segment |
-| `circle_arc` | circular arc or full circle |
-| `ellipse_arc` | elliptic arc or full ellipse |
-| `superellipse_arc` | Lamé / rounded-rectangle family |
-| `rectangle_arc` | closed rectangle parameterised by perimeter |
-| `polyline` | piecewise-linear path |
-| `star_arc` | regular closed star polygon |
-| `from_control_points` | smooth Hermite curve from control points |
+|---|---|
+| `basis.smooth_unit_step(x, n)` | H_n(x) (Eq. 6) |
+| `basis.smooth_unit_step_delta(x, n, delta)` | H_{n,δ}(x) (Eq. 11) |
+| `basis.psp_basis(x, a, b, n, delta)` | B^{(n)}_{[a,b],δ}(x) (Eq. 17) |
+| `basis.psp_partition(x, knots, n, delta)` | Basis matrix (Eq. 18) |
+| `basis.shape_preserving_interval(a, b, delta)` | [a+δ, b−δ] flat-top |
+| `basis.knots_from_weights(weights)` | Knots from interval widths (Eq. 20) |
+| `basis.interpolated_indices(knots, delta)` | Which control points are interpolated |
 
-## Demos
+### Deprecated aliases (backward compatible)
 
-### Scripted demo
+The old API still works but emits `DeprecationWarning`:
 
-Run:
+| Old name | Replacement |
+|---|---|
+| `ShapeBlendSpline` | `WeightedControlPolygonPSPSpline` / `BlendedPrimitivePSPSpline` |
+| `PeriodicShapeBlendSpline` | `PeriodicPSPSpline` |
+| `ControlPointSpline` | `WeightedControlPolygonPSPSpline` |
+| `ShapeBlender` | (kept; global weighted baseline, not the paper technique) |
 
-```bash
-python examples/basic_demo.py
-```
+---
 
-The script generates figures showing:
-- a **closed periodic multi-shape SBS curve**,
-- a **locality sweep** for the same shapes,
-- an **open SBS design sequence**,
-- **periodic weight functions**,
-- a **global-vs-local comparison**,
-- **open and closed control-point curves**.
+## Theory
 
-### Notebook demo
+See [`docs/theory.md`](docs/theory.md) for the complete mathematical reference
+with all equations (Eqs. 1–23) from Li & Tian (2011).
 
-The notebook at `notebooks/interactive_shape_blend_demo.ipynb` uses the package API directly and walks through:
+---
 
-- **Section 1** — *4 control points / 4 edge lines → closed SBS curve*:
-  4 square corners → 4 phase-aligned edge lines → closed periodic SBS blend,
-  showing the intended square-like → transitional → ellipse-like locality
-  progression from the same geometry.
-- **Section 2** — *Open SBS sequence with locality story*:
-  an open control-point polygon whose edges are blended by SBS, showing how
-  α moves between a smooth global curve and a near-piecewise-linear path.
-- **Section 3** — *Interactive locality sweep*:
-  an `ipywidgets` locality slider that updates in real time both the direct
-  SBS basis curves $W_j(t)$ and the resulting closed curve. A static fallback
-  grid is also pre-rendered for non-widget renderers.
-- **Section 4** — *Numerical verification: B-spline as a step-function difference*:
-  plots the exact step-difference identity for `sbs_basis` and compares
-  peak-normalised cubic B-spline bases against the SBS approximation.
-- **Section 5** — *Control-point workflow* (unchanged).
+## Reference
 
-Open it locally with:
-
-```bash
-jupyter lab notebooks/interactive_shape_blend_demo.ipynb
-```
-
-or in Colab via the badge at the top of this README.
-
-## Testing
-
-```bash
-python3 -m pytest tests/ -v
-```
-
-## Why SBS is interesting
-
-SBS is most compelling when you want a curve to look locally like different geometric primitives across different regions of the same parameter domain.
-
-Examples from this repository include:
-- a closed loop that becomes circle-like, ellipse-like, rounded-rectangle-like, rectangular, and star-like in different regions,
-- a locality parameter that continuously moves between global smoothing and strong local identity,
-- periodic wrap-around blending for closed curves,
-- control-point-driven curves for familiar spline-style modelling.
-
-That combination is the main research story of the repository.
-
-## Citation
-
-```bibtex
-@article{li2011shapeblend,
-  title   = {Shape Blend Splines},
-  author  = {Li, Q.},
-  journal = {Computer-Aided Design},
-  volume  = {43},
-  number  = {8},
-  pages   = {990--1001},
-  year    = {2011},
-  doi     = {10.1016/j.cad.2011.01.006}
-}
-```
-
-## License
-
-Released under the **MIT License**. See [LICENSE](LICENSE).
+> Q. Li, J. Tian, **"Partial shape-preserving splines"**,
+> *Computer-Aided Design* **43** (2011) 394–409.

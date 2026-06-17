@@ -1,12 +1,25 @@
 """
-Higher-level shape blending utilities.
+Higher-level shape blending utilities (global weighted baseline).
 
-This module builds on :class:`~shape_blend_splines.curve.ShapeBlendSpline` to
-provide convenience helpers for common blending tasks.
+.. important::
+   The functions in this module implement a simple **global weighted blend**
+   that is **not** the PSP spline technique from Li & Tian (2011).  For the
+   paper-faithful PSP implementation use:
 
-The functions in this module are intentionally lightweight.  They are useful
-for simple global weighted blends and educational comparisons, whereas the core
-SBS behaviour lives in :mod:`shape_blend_splines.curve`.
+   - :class:`~shape_blend_splines.curve.WeightedControlPolygonPSPSpline`
+     (Eq. 21, Figs. 9, 10)
+   - :class:`~shape_blend_splines.curve.BlendedPrimitivePSPSpline`
+     (Eq. 22)
+   - :class:`~shape_blend_splines.curve.HermitePSPSpline`
+     (Eq. 23)
+
+   Reference: Q. Li, J. Tian, "Partial shape-preserving splines",
+   Computer-Aided Design 43 (2011) 394-409.
+
+The :class:`ShapeBlender` class is useful for simple interactive
+exploration (drag sliders to vary how much each shape contributes) and
+educational global-blend comparisons, but it does not use PSP basis
+functions and has no flat-top shape preservation.
 """
 
 from __future__ import annotations

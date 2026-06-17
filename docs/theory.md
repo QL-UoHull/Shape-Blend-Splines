@@ -1,223 +1,288 @@
-# Theory: B-spline Basis Functions as Differences of Smooth Step Functions
+# Theory: Partial Shape-Preserving (PSP) Splines
 
-This document establishes the theoretical connection between classical
-B-spline basis functions and the **smooth step-function difference** construction
-used in Shape Blend Splines (SBS).  It contains a formal statement, a proof via
-the truncated-power (one-sided) basis and divided differences, and an explicit
-link to the implementation in `shape_blend_splines/basis.py`.
+**Reference:** Q. Li, J. Tian, "Partial shape-preserving splines",
+*Computer-Aided Design* **43** (2011) 394–409.
 
 ---
 
-## 1  Notation and prerequisites
+## 1  Why PSP splines?  B-spline vs NURBS vs PSP
 
-Let $\tau_0 \le \tau_1 \le \cdots \le \tau_{n+p}$ be a **knot vector** with
-no knot of multiplicity greater than $p+1$.  The degree-$p$ B-spline basis
-functions $N_{i,p}(t)$, $i = 0,\dots,n-1$, are defined by the
-**Cox–de Boor recursion**:
-
-$$
-N_{i,0}(t) = \begin{cases} 1 & \tau_i \le t < \tau_{i+1},\\ 0 & \text{otherwise,} \end{cases}
-\qquad
-N_{i,p}(t) = \frac{t-\tau_i}{\tau_{i+p}-\tau_i}\,N_{i,p-1}(t)
-           + \frac{\tau_{i+p+1}-t}{\tau_{i+p+1}-\tau_{i+1}}\,N_{i+1,p-1}(t).
-$$
-
-Key properties (standard results):
-
-* **Support:** $N_{i,p}(t) = 0$ for $t \notin [\tau_i,\,\tau_{i+p+1}]$.
-* **Non-negativity:** $N_{i,p}(t) \ge 0$ for all $t$.
-* **Partition of unity:** $\sum_i N_{i,p}(t) = 1$.
-* **Smoothness:** $N_{i,p} \in C^{p-1}$ at a simple knot, $C^{p-m}$ at a knot of multiplicity $m$.
-
----
-
-## 2  The truncated-power representation
-
-Define the **truncated power function** of degree $p$ at knot $\tau$:
-
-$$
-(t - \tau)_+^p \;=\; \max(t-\tau,\; 0)^p.
-$$
-
-This is a one-sided polynomial: zero for $t < \tau$ and a degree-$p$ polynomial for $t \ge \tau$.
-
-**Divided differences.**  For a function $f$ and distinct nodes $\tau_i,\dots,\tau_{i+p+1}$, the divided difference $[\tau_i,\dots,\tau_{i+p+1}]\,f$ is defined recursively:
-
-$$
-[\tau_i, \tau_{i+1}]\,f = \frac{f(\tau_{i+1}) - f(\tau_i)}{\tau_{i+1} - \tau_i},
-\qquad
-[\tau_i,\dots,\tau_{i+p+1}]\,f
-= \frac{[\tau_{i+1},\dots,\tau_{i+p+1}]\,f - [\tau_i,\dots,\tau_{i+p}]\,f}{\tau_{i+p+1}-\tau_i}.
-$$
-
-**Theorem (Curry–Schoenberg, 1966).**  For a simple knot vector,
-
-$$
-\boxed{
-N_{i,p}(t) = (\tau_{i+p+1} - \tau_i)\;
-             [\tau_i,\dots,\tau_{i+p+1}]\;(\cdot - t)_+^p,
-}
-\tag{1}
-$$
-
-where the divided difference is taken with respect to the knot arguments (treating $t$ as fixed).
-
-*Proof sketch.*  One verifies (1) satisfies the Cox–de Boor recursion and boundary conditions.  The factor $(\tau_{i+p+1}-\tau_i)$ normalises the result to a partition of unity.
-
----
-
-## 3  The step-function difference structure
-
-### 3.1  Cumulative smooth step functions
-
-Define the degree-$p$ **smooth step** accumulated from basis functions of
-degree $p-1$:
-
-$$
-\Sigma_{i,p}(t) = \sum_{j \le i} N_{j,p-1}(t).
-\tag{2}
-$$
-
-This is a non-decreasing function from 0 (for $t < \tau_0$) to 1 (for
-$t \ge \tau_{n+p-1}$); it is a "$C^{p-2}$-smooth staircase" that rises by
-exactly $N_{j,p-1}(t)$ as $t$ increases through the support of basis $j$.
-
-**Proposition.** The degree-$p$ B-spline basis function equals the difference of
-two consecutive cumulative steps:
-
-$$
-N_{i,p}(t) = \Sigma_{i+1,p}(t) - \Sigma_{i,p}(t).
-\tag{3}
-$$
-
-*Proof.*  From definition (2):
-$\Sigma_{i+1,p}(t) - \Sigma_{i,p}(t) = N_{i+1-1,p-1}(t)\cdot[\text{term added at index }i+1]$
-— but more directly, since $\{N_{j,p}\}$ form a partition of unity, the
-telescoping sum $\sum_{j=0}^{i} N_{j,p}(t) = \Sigma_{i+1,p+1}(t)$ (with
-suitable index convention), and differencing gives (3).  Equivalently, (3)
-follows immediately from partial summation on the partition-of-unity identity. $\square$
-
-### 3.2  Exact connection to divided differences
-
-Substituting the truncated-power representation (1), one can show that each
-smooth-step $\Sigma_{i,p}$ is expressible as a scaled $(p+1)$-th primitive of
-the piecewise-polynomial defined by the knot intervals, and that (3) recovers
-the divided-difference identity:
-
-$$
-(\tau_{i+p+1} - \tau_i)\;[\tau_i,\dots,\tau_{i+p+1}]\;(\cdot-t)_+^p
-= \Sigma_{i+1,p}(t) - \Sigma_{i,p}(t).
-$$
-
-This is the precise sense in which **every B-spline basis function is a
-difference of two smooth step functions**.  The "smooth step functions" are the
-cumulative sums $\Sigma_{i,p}$ — they are $C^{p-2}$-smooth, monotone
-non-decreasing from 0 to 1, and built from polynomial pieces.
-
-> **Important precision.**  The statement "$N_{i,p}$ = difference of two step
-> functions" holds exactly in the cumulative/divided-difference sense above.
-> It does **not** mean that any arbitrary pair of smooth sigmoid-like functions
-> will reproduce a specific B-spline: the step functions must be the cumulative
-> integrals of the degree-$(p-1)$ bases with the *same* knot vector.
-
----
-
-## 4  Special case: the SBS basis
-
-The Shape Blend Spline framework (Li, 2011) uses a *smooth polynomial*
-approximation to the degree-0 (indicator) case.  Define the smooth step
-function at centre $c$ with half-width $\sigma$:
-
-$$
-S(t;\, c, \sigma) = T_n\!\left(\tfrac{t - c + \sigma}{2\sigma}\right),
-\tag{4}
-$$
-
-where $T_n$ is the **recursive piecewise-polynomial smooth step** of order $n$
-(implemented as `recursive_smooth_step` in `basis.py`):
-
-$$
-T_n(x) = \frac{1}{(n+1)!}
-\sum_{j=0}^{n+1}(-1)^j\binom{n+1}{j}\max\!\bigl((n+1)x - j,\;0\bigr)^{n+1},
-\quad x \in [0,1].
-$$
-
-$T_n$ satisfies $T_n(0)=0$, $T_n(1)=1$, and $T_n \in C^n[0,1]$.
-
-### 4.1  SBS step-difference basis
-
-For an interval $[a, b]$ the SBS basis piece is:
-
-$$
-B_{a,b}(t) = S_b(t) - S_a(t),
-\tag{5}
-$$
-
-where $S_a(t) = 1 - S(t;\,a,\,\sigma)$ (a *falling* smooth step at $a$) and
-$S_b(t) = 1 - S(t;\,b,\,\sigma)$ (a *falling* smooth step at $b$).  Both
-steps are *falling*, so (5) is non-negative on $(a,b)$ and vanishes outside
-— in exact analogy with the degree-0 B-spline indicator
-$N_{i,0} = \mathbf{1}_{[\tau_i,\tau_{i+1})}$.
-
-Replacing the discontinuous Heaviside with $C^n$-smooth $T_n$ yields:
-
-* **Smoothness:** $B_{a,b} \in C^n$ (degree-$n$ smooth), vs. $N_{i,0}$ which is
-  $C^{-1}$ (discontinuous).
-* **Locality:** the transition width is controlled by $\sigma$; the parameter
-  $\alpha$ in `blend_weights` sets $\sigma = \sigma_0/\alpha$, so higher $\alpha$
-  → narrower transitions → stronger locality.
-* **Partition of unity** is enforced directly by a telescoping step
-  construction:
-  $W_0 = 1-U_1,\; W_j = U_j-U_{j+1},\; W_{k-1}=U_{k-1}$,
-  so $\sum_j W_j(t)=1$ without any rational normalisation.
-
-### 4.2  Mapping to `basis.py`
-
-| Mathematical symbol | Python name in `basis.py` | Notes |
-|---|---|---|
-| $T_n(x)$ | `recursive_smooth_step(x, order=n)` | smooth polynomial step on $[0,1]$ |
-| $S(t; c, \sigma)$ | `smooth_step_at(t, centre=c, half_width=σ)` | centred version |
-| $B_{a,b}(t)$ | `sbs_basis(t, a, b)` | step-difference SBS basis piece |
-| $W_j(t)$ | `blend_weights(t, centers, locality, ...)` | direct polynomial partition-of-unity weights |
-
----
-
-## 5  Regularity assumptions
-
-The derivation above assumes:
-
-1. **Simple interior knots** (multiplicity $\le 1$) for the $C^{p-1}$ smoothness
-   claim.  At a knot of multiplicity $m$ the basis is only $C^{p-m}$.
-2. **Positive knot spans:** $\tau_{i+1} > \tau_i$ where required.  Clamped
-   knots (multiplicity $p+1$ at the ends) produce $C^{-1}$ boundary
-   interpolation.
-3. The divided-difference formula (1) is stated for the standard (possibly
-   non-uniform) B-spline setting; the SBS analogue (5) uses *equal* half-widths
-   $\sigma = (b-a)/(2\alpha)$ for each interval.
-
----
-
-## 6  Summary
-
-| Framework | Step function type | Degree | Exact difference? |
+| Property | B-spline | NURBS | PSP spline |
 |---|---|---|---|
-| Classical B-spline, $p=0$ | Heaviside (discontinuous) | 0 | Yes (exactly) |
-| Classical B-spline, $p>0$ | Cumulative integral of lower-degree basis | $p$ | Yes via divided differences (Curry–Schoenberg) |
-| SBS basis | $C^n$-smooth polynomial ($T_n$) | $n$ | Yes (smooth approximation to $p=0$ case) |
+| Polynomial (non-rational) | ✓ | ✗ (rational) | ✓ |
+| Partition of unity | ✓ | ✓ | ✓ |
+| C^{n-1} smoothness | ✓ | ✓ | ✓ |
+| Local control | ✓ | ✓ | ✓ |
+| Basis reaches value 1 (flat-top) | ✗ | via rational weights | ✓ |
+| Exact primitive reproduction | ✗ | ✓ | ✓ |
+| Weights without rational denominator | N/A | ✗ | ✓ (knot spacings) |
+| Extra design dimension δ | ✗ | ✗ | ✓ |
+| Selective/partial interpolation | ✗ | ✗ | ✓ |
 
-The SBS construction replaces the discontinuous Heaviside with a $C^n$ smooth
-analogue. The resulting basis shares the key structural properties
-(non-negativity, locality, partition of unity) while remaining entirely
-polynomial and providing adjustable smoothness and transition width via the
-locality parameter $\alpha$.
+**The headline:** PSP splines are B-spline-like (polynomial, C^{n-1}, partition of unity, local control), achieve what NURBS achieves (exact primitive reproduction), are *more flexible* than NURBS (extra δ dimension, selective interpolation), and are entirely **non-rational**.
 
 ---
 
-## References
+## 2  The smooth unit step H_n(x)  (Section 4)
 
-* H. B. Curry and I. J. Schoenberg, "On Pólya frequency functions IV: The
-  fundamental spline functions and their limits", *J. Analyse Math.*, 17,
-  71–107, 1966.
-* C. de Boor, *A Practical Guide to Splines*, Springer, 1978.
-* Q. Li, "Shape Blend Splines", *Computer-Aided Design*, 43(8), 990–1001, 2011.
-  DOI: [10.1016/j.cad.2011.01.006](https://doi.org/10.1016/j.cad.2011.01.006)
+### Heaviside base (Eq. 1)
+
+$$
+H_0(x) = \begin{cases}
+  0 & x < 0 \\
+  \tfrac{1}{2} & x = 0 \\
+  1 & x > 0
+\end{cases}
+$$
+
+### Recursion (Eq. 2)
+
+$$
+H_n(x) = \tfrac{1}{2}\!\left[
+  \left(1 + \frac{x}{n}\right) H_{n-1}(x+1)
+  + \left(1 - \frac{x}{n}\right) H_{n-1}(x-1)
+\right], \quad n \ge 1
+$$
+
+### Closed form — preferred for implementation (Eq. 6)
+
+$$
+H_n(x) = \frac{1}{n!\,2^n}
+\sum_{k=0}^{n} (-1)^k \binom{n}{k}
+(x + n - 2k)^n H_0(x + n - 2k)
+$$
+
+This is vectorisable and avoids catastrophic cancellation for large |x| because
+the early-exit rule H_n = 0 for x ≤ −n and H_n = 1 for x ≥ n is applied first.
+
+### Explicit forms (Eqs. 7–10)
+
+$$
+H_1(x) = \tfrac{1}{2}\bigl[(x+1)H_0(x+1) - (x-1)H_0(x-1)\bigr]
+$$
+
+$$
+H_2(x) = \tfrac{1}{8}\bigl[(x+2)^2 H_0(x+2) - 2x^2 H_0(x) + (x-2)^2 H_0(x-2)\bigr]
+$$
+
+$$
+H_3(x) = \tfrac{1}{48}\bigl[(x+3)^3 H_0(x+3) - 3(x+1)^3 H_0(x+1)
++ 3(x-1)^3 H_0(x-1) - (x-3)^3 H_0(x-3)\bigr]
+$$
+
+Piecewise form of H_3 (page 396) for verification:
+
+$$
+H_3(x) = \begin{cases}
+  0 & x < -3 \\
+  \tfrac{1}{48}(3+x)^3 & -3 \le x < -1 \\
+  \tfrac{1}{24}(12 + 9x - x^3) & -1 \le x < 0 \\
+  1 - H_3(-x) & x \ge 0
+\end{cases}
+$$
+
+### Properties (Prop. 4.1)
+
+- **C^{n-1} smooth** for n ≥ 1 (degree-n piecewise polynomial).
+- **Monotone increasing**.
+- H_n(x) = 1 for x ≥ n;  H_n(x) = 0 for x ≤ −n.
+- H_n(0) = 1/2.
+- **Antisymmetry:** H_n(−x) = 1 − H_n(x).
+
+### Derivatives (Eqs. 12–13)
+
+$$
+H_n^{(i)}(x) = \frac{1}{(n-i)!\,2^n}
+\sum_{k=0}^{n} (-1)^k \binom{n}{k}
+(x+n-2k)^{n-i} H_0(x+n-2k),
+\quad 0 \le i < n
+$$
+
+---
+
+## 3  Scaled smooth unit step H_{n,δ}  (Eq. 11)
+
+$$
+H_{n,\delta}(x) = H_n\!\left(\frac{n\,x}{\delta}\right), \quad \delta > 0
+$$
+
+**δ is the rising/blending range:**
+
+- H_{n,δ}(x) = 1 for x ≥ δ
+- H_{n,δ}(x) = 0 for x ≤ −δ
+- H_{n,δ}(0) = 1/2
+
+Small δ → narrow transition (steep step); large δ → wide transition (gentle slope).
+
+---
+
+## 4  PSP basis function  (Section 5, Eq. 17)  — THE CORE
+
+For interval [a, b]:
+
+$$
+\boxed{B^{(n)}_{[a,b],\delta}(x) = H_{n,\delta}(x-a) - H_{n,\delta}(x-b)}
+$$
+
+**Any PSP basis is the difference of two smooth unit steps.**
+
+### Properties (Section 5)
+
+1. **Non-negative:** 0 ≤ B ≤ 1.
+2. **C^{n-1} smooth.**
+3. **Flat-top (shape preservation):** B = 1 exactly on [a+δ, b−δ]
+   when b−a ≥ 2δ.  This is the *shape-preserving interval*.
+4. **Additivity:** B_{[a,c]} + B_{[c,b]} = B_{[a,b]}.
+5. **Compact support:** B = 0 outside [a−δ, b+δ].
+6. Small δ → wide flat-top (Fig. 5, δ=0.1); large δ → bump shape (δ=1.9).
+
+### Flat-top width
+
+$$
+\text{flat-top width} = (b-a) - 2\delta \quad \text{(zero when } b-a < 2\delta\text{)}
+$$
+
+This is the key difference from B-splines: a B-spline basis *never* reaches 1 (no flat-top), while a PSP basis equals 1 on a whole interval.  NURBS achieves the same effect but through a rational denominator; PSP achieves it with pure polynomials.
+
+### Non-symmetric basis (Eq. 19)
+
+$$
+B = H_{n,\delta_a}(x-a) - H_{n,\delta_b}(x-b)
+$$
+
+Non-negative when 0 ≤ (b−a−δ_b) ≤ δ_a.
+
+---
+
+## 5  Partition of unity  (Eq. 18)
+
+For knots t_0 ≤ … ≤ t_m (with t_{-1} = −∞, t_{m+1} = +∞):
+
+$$
+\sum_{i=0}^{m} B^{(n)}_{[t_{i-1},t_i],\delta}(x) = 1 \quad \text{for all } x
+$$
+
+This is a telescoping sum: consecutive differences of H_{n,δ}(x−t_j) cancel, leaving H_{n,δ}(x−t_{-1}) − H_{n,δ}(x−t_{m+1}) = 1 − 0 = 1.
+
+In practice, for a finite design domain [t_0, t_m] with m+1 basis functions:
+
+$$
+\sum_{i=0}^{m-1} B^{(n)}_{[t_i,t_{i+1}],\delta}(x)
+= H_{n,\delta}(x-t_0) - H_{n,\delta}(x-t_m) = 1
+\quad \text{for } x \in [t_0+\delta,\ t_m-\delta]
+$$
+
+No rational normalization is ever needed.
+
+---
+
+## 6  B-spline as a special case  (page 398)
+
+When knots are **uniformly spaced** with unit spacing, the degree-n B-spline
+basis function N_{i,n} equals:
+
+$$
+N_{i,n}(t) = B^{(n)}_{[a_i,\,a_i+1],\,\delta}(t)
+\quad \text{with } a_i = i + \tfrac{n}{2},\quad \delta = \tfrac{n}{2}
+$$
+
+For cubic (n=3): δ=1.5, intervals [1.5,2.5], [2.5,3.5], …
+
+With equal-spaced knots and δ = n/2, the interval width = 1 < 2δ = n, so the
+flat-top is *empty* — this is consistent with B-splines never reaching value 1.
+
+For **non-equal knots**, PSP and B-spline differ: B-spline shape depends on the
+full knot-span configuration; PSP shape depends only on the two endpoint
+smoothing parameters.
+
+---
+
+## 7  Curve design  (Section 6)
+
+### 7.1 Weighted control polygon  (Eqs. 20–21; Figs. 9, 10)
+
+Given control points P_0, …, P_N and weights w_i ≥ 0:
+
+**Knots from weights (Eq. 20):**
+$$
+a_0 = 0, \quad a_{i+1} = a_i + w_i, \quad i = 0,\ldots,N
+$$
+
+**Curve (Eq. 21):**
+$$
+P(t) = \sum_{i=0}^{N} P_i\, B^{(n)}_{[a_i,a_{i+1}],\delta}(t)
+$$
+
+- A **larger weight** w_i means a wider interval → wider flat-top → stronger
+  pull toward P_i (NURBS-weight effect without rational denominator).
+- When w_i ≥ 2δ, P_i is interpolated exactly.
+- **Same control polygon + same weights + different δ** → different curve
+  family (Fig. 9b) — the extra design dimension absent from NURBS.
+
+### 7.2 Primitive blending  (Eq. 22)
+
+Blend whole parametric primitives P_i(t) (lines, arcs, helix, …):
+
+$$
+P(t) = \sum_i P_i(t)\, B^{(n)}_{[t_i,t_{i+1}],\delta}(t)
+$$
+
+Each P_i(t) is reproduced exactly on its flat-top.  Primitives may be
+different mathematical types.
+
+### 7.3 Hermite position + velocity  (Eq. 23)
+
+Using the quadratic (n=2) PSP basis:
+
+$$
+P(t) = \sum_{i=0}^{N}
+\bigl(P_i + (t - t_i)\,v_i\bigr)
+\, B^{(2)}_{[a_i,a_{i+1}],\delta}(t)
+$$
+
+When t_i is inside a non-empty flat-top: P(t_i) = P_i, P'(t_i) = v_i.
+The straight-line primitive P_i + (t−t_i)v_i is reproduced exactly on the
+flat-top → embedded straight segments with smooth joins.
+
+---
+
+## 8  Selective/partial interpolation  (Fig. 11)
+
+A control point P_i (or primitive P_i(t)) is **interpolated exactly** iff the
+corresponding interval satisfies:
+
+$$
+a_{i+1} - a_i \ge 2\delta
+\quad\Longleftrightarrow\quad
+\text{flat-top}\ [a_i+\delta,\ a_{i+1}-\delta]\ \text{is non-empty}
+$$
+
+With partition of unity, B_i = 1 on the flat-top implies all other B_j = 0
+there → P(t) = P_i for t in the flat-top.
+
+**Fig. 11 scenario:**
+- P0, P2, P5, P7 have long intervals (w ≥ 2δ) → interpolated.
+- P1, P3, P4, P6 have short intervals (w < 2δ) → only approached.
+- Fig. 11a (δ=1.0) vs 11b (δ=1.8): *same control polygon*, different δ,
+  different curve and different set of interpolated points.
+
+---
+
+## 9  Symbol–function table
+
+| Symbol | Python function | Location |
+|---|---|---|
+| H_0(x) | `heaviside_step(x)` | `basis.py` |
+| H_n(x) | `smooth_unit_step(x, n)` | `basis.py` |
+| H_{n,δ}(x) | `smooth_unit_step_delta(x, n, delta)` | `basis.py` |
+| H_n^{(i)}(x) | `smooth_unit_step_deriv(x, n, i)` | `basis.py` |
+| B^{(n)}_{[a,b],δ}(x) | `psp_basis(x, a, b, n, delta)` | `basis.py` |
+| Eq. 17 asymmetric | `psp_basis_asymmetric(...)` | `basis.py` |
+| Eq. 18 matrix | `psp_partition(x, knots, n, delta)` | `basis.py` |
+| [a+δ, b−δ] | `shape_preserving_interval(a, b, delta)` | `basis.py` |
+| Eq. 20 knots | `knots_from_weights(weights)` | `basis.py` |
+| Selective interp. | `interpolated_indices(knots, delta)` | `basis.py` |
+| Eq. 21 | `WeightedControlPolygonPSPSpline` | `curve.py` |
+| Eq. 22 | `BlendedPrimitivePSPSpline` | `curve.py` |
+| Eq. 23 | `HermitePSPSpline` | `curve.py` |
+| Closed curve | `PeriodicPSPSpline` | `curve.py` |
