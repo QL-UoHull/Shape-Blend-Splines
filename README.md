@@ -10,13 +10,49 @@
   <img src="https://img.shields.io/badge/python-3.8%2B-blue" alt="Python 3.8+"/>
 </p>
 
-> **PSP splines are B-spline-like, achieve what NURBS achieves, are *more flexible*
-> than NURBS — and are NOT rational.**
+> **PSP splines are a natural extension of B-splines, achieve what NURBS achieves,
+> are *more flexible* than NURBS — and are NOT rational.**
 
 This repository provides a faithful Python implementation of the Partial Shape-Preserving (PSP) spline technique from:
 
 > Q. Li, J. Tian, **"Partial shape-preserving splines"**,
 > *Computer-Aided Design* **43** (2011) 394–409.
+
+---
+
+## What are PSP splines? (the one-paragraph idea)
+
+PSP splines (**PSPS**) are a **natural extension of B-splines**. A B-spline basis
+function is built recursively, and that recursion can be written as a **convolution**.
+The starting point of the recursion is the **degree-0 top-flat basis** $B^{(0)}(t)$
+defined on an interval $[a, b]$ — the box that takes the value **1** when
+$t \in [a, b]$ and **0** outside it. The key observation is that this box can be
+rewritten as the **difference of two Heaviside unit step functions**, one anchored at
+each end of the interval:
+
+$$B^{(0)}_{[a,b]}(t) = H(t - a) - H(t - b).$$
+
+Replacing the hard Heaviside step $H$ by a **smooth** unit step $H_{n,\delta}$
+(which rises from 0 to 1 over a small blending range $\delta$) turns this box into a
+smooth, **flat-top** basis function while keeping the "difference of two steps"
+structure intact (Eq. 17):
+
+$$B^{(n)}_{[a,b],\delta}(t) = H_{n,\delta}(t - a) - H_{n,\delta}(t - b).$$
+
+Because the basis still reaches **exactly 1** on its flat top $[a+\delta,\, b-\delta]$,
+the corresponding control point — or whole **control shape** — is reproduced *exactly*
+there. This is what upgrades the method from a **control-point–blending** spline
+technique (B-spline/NURBS) into a **control-*shape*-blending** design technique that is
+**more flexible and versatile than NURBS**, yet remains fully **polynomial
+(non-rational)**.
+
+> **GPU-friendly by construction.** Each PSP basis function is defined **locally** as a
+> simple difference of two smooth steps. Unlike NURBS, **no global denominator** has to
+> be computed to renormalize all the basis functions back to a partition of unity — the
+> partition of unity holds *automatically* (the step differences telescope). This makes
+> PSPS especially well suited to **GPU mesh-shader and tessellation-shader** pipelines,
+> where each shader invocation can evaluate its own basis locally without any global,
+> cross-lane normalization pass.
 
 ---
 
@@ -31,6 +67,8 @@ This repository provides a faithful Python implementation of the Partial Shape-P
 | Basis reaches value 1 (flat-top) | ✗ | via rational weights | **✓** |
 | Exact primitive reproduction | ✗ | ✓ | **✓** |
 | Weights without rational denominator | N/A | ✗ | **✓** (knot spacings) |
+| **No global denominator for unity (GPU-friendly)** | ✓ | ✗ | **✓** |
+| **Blends control *shapes*, not just points** | ✗ | ✗ | **✓** |
 | Extra design dimension δ | ✗ | ✗ | **✓** |
 | Selective/partial interpolation | ✗ | ✗ | **✓** |
 
@@ -53,6 +91,40 @@ PSP splines keep all the nice B-spline properties, then add:
    interpolated *exactly*; others are merely approached (Fig. 11). Multiple
    straight segments can be embedded in an otherwise smooth freeform curve.
 
+5. **Shape blending instead of point blending** — because each flat-top reproduces
+   its primitive exactly, whole **parametric shapes** (lines, arcs, helices, …) can
+   be blended into one smooth curve while their key features are selectively
+   preserved (Eq. 22).
+
+---
+
+## From B-spline recursion to PSP basis (convolution view)
+
+A degree-n B-spline basis is the repeated **convolution** of the degree-0 box with
+itself (the classic recursion). PSP splines start from the *same* degree-0 building
+block — the **top-flat box** on $[a, b]$ —
+
+$$
+B^{(0)}_{[a,b]}(t) =
+\begin{cases}
+1 & a \le t \le b \\
+0 & \text{otherwise}
+\end{cases}
+\;=\; H(t - a) - H(t - b),
+$$
+
+i.e. the **difference of two Heaviside unit step functions** corresponding to the two
+ends of the interval. Smoothing each Heaviside step into the C^{n-1} smooth unit step
+$H_{n,\delta}$ (Eq. 11) and keeping the same difference-of-steps form yields the PSP
+basis (Eq. 17):
+
+$$B^{(n)}_{[a,b],\delta}(t) = H_{n,\delta}(t - a) - H_{n,\delta}(t - b).$$
+
+This recursive-convolution reconstruction is what makes PSPS a **natural extension of
+B-splines**: the B-spline is recovered as a special case (uniform knots, δ = n/2; see
+[Theory §6](docs/theory.md)), while the flat top — absent from B-splines — emerges
+whenever the interval is wider than the blending range (b − a ≥ 2δ).
+
 ---
 
 ## Core formula (Eq. 17)
@@ -70,13 +142,17 @@ The basis equals **1 exactly** on [a+δ, b−δ].  On the flat-top, the
 corresponding control point (or primitive) is reproduced exactly.
 Smaller δ → wider flat-top; larger δ → bump shape (Fig. 5).
 
-### Partition of unity (Eq. 18)
+### Partition of unity (Eq. 18) — no global denominator
 
 For knots t_0 ≤ … ≤ t_m, the PSP basis matrix satisfies:
 
 $$\sum_i B^{(n)}_{[t_i,t_{i+1}],\delta}(x) = 1 \quad \forall x \in [t_0+\delta,\ t_m-\delta]$$
 
-No rational normalization — ever.
+This holds because consecutive differences of H_{n,δ} **telescope** — the partition of
+unity is built into the construction. **No rational normalization, and no global
+denominator, is ever computed.** Each basis function is evaluated purely locally, which
+is exactly what makes PSPS friendly to **GPU mesh-shader and tessellation-shader**
+pipelines: there is no cross-element/cross-lane normalization pass to synchronize.
 
 ---
 
