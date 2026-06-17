@@ -16,10 +16,67 @@
 | Basis reaches value 1 (flat-top) | ✗ | via rational weights | ✓ |
 | Exact primitive reproduction | ✗ | ✓ | ✓ |
 | Weights without rational denominator | N/A | ✗ | ✓ (knot spacings) |
+| No global denominator for unity (GPU-friendly) | ✓ | ✗ | ✓ |
+| Blends control *shapes*, not just points | ✗ | ✗ | ✓ |
 | Extra design dimension δ | ✗ | ✗ | ✓ |
 | Selective/partial interpolation | ✗ | ✗ | ✓ |
 
-**The headline:** PSP splines are B-spline-like (polynomial, C^{n-1}, partition of unity, local control), achieve what NURBS achieves (exact primitive reproduction), are *more flexible* than NURBS (extra δ dimension, selective interpolation), and are entirely **non-rational**.
+**The headline:** PSP splines are a **natural extension of B-splines** (polynomial,
+C^{n-1}, partition of unity, local control), achieve what NURBS achieves (exact
+primitive reproduction), are *more flexible* than NURBS (extra design dimension δ,
+selective interpolation, shape blending) — and remain **non-rational**.
+
+### 1.1  The core idea: B-splines reconstructed by convolution
+
+PSP splines are a natural extension of B-splines obtained by **reconstructing each
+B-spline basis function recursively in the form of a convolution**. The recursion
+starts from the **degree-0 top-flat basis** $B^{(0)}(t)$ defined on an interval
+$[a, b]$ — the box that equals **1** for $t \in [a, b]$ and **0** outside it:
+
+$$
+B^{(0)}_{[a,b]}(t) =
+\begin{cases}
+1 & a \le t \le b \\
+0 & \text{otherwise}.
+\end{cases}
+$$
+
+The key step is to rewrite this box as the **difference of two Heaviside unit step
+functions**, one anchored at each end of the interval $[a, b]$:
+
+$$
+B^{(0)}_{[a,b]}(t) = H_0(t - a) - H_0(t - b).
+$$
+
+A degree-$n$ B-spline basis is then the repeated convolution of this box with a kernel;
+equivalently, smoothing each hard Heaviside step $H_0$ into the **C^{n-1} smooth unit
+step** $H_{n,\delta}$ (§3, Eq. 11) — while keeping the *same* difference-of-two-steps
+structure — yields the PSP basis (§4, Eq. 17):
+
+$$
+B^{(n)}_{[a,b],\delta}(t) = H_{n,\delta}(t - a) - H_{n,\delta}(t - b).
+$$
+
+Because each basis is built from **top-flat** building blocks, the PSP construction
+turns a **control-point–blending** spline technique (B-spline / NURBS) into a
+**control-*shape*-blending** design technique: on the flat top the corresponding
+control point — or whole parametric **shape** — is reproduced *exactly*, while key
+features can be **selectively preserved** (§8). This makes PSPS **more flexible and
+versatile than NURBS**, yet fully polynomial.
+
+### 1.2  GPU mesh-shader / tessellation-shader friendliness
+
+Each PSP basis function is defined **locally** as a simple difference of two smooth
+unit steps. Unlike NURBS, **no global denominator** has to be computed to renormalize
+all the basis functions back to a partition of unity — the partition of unity holds
+**automatically** because consecutive step differences *telescope* (§5, Eq. 18).
+
+This locality is what makes PSPS friendly to **GPU mesh-shader and tessellation-shader**
+pipelines: every shader invocation can evaluate its own basis directly from the two
+interval endpoints $a, b$ and the blending range $\delta$, with **no global,
+cross-lane/cross-element normalization pass** to synchronize. By contrast, a NURBS
+evaluation must form the rational denominator $\sum_j w_j N_j(t)$ across the active
+basis functions before any point can be produced.
 
 ---
 
@@ -118,7 +175,8 @@ Small δ → narrow transition (steep step); large δ → wide transition (gentl
 
 ## 4  PSP basis function  (Section 5, Eq. 17)  — THE CORE
 
-For interval [a, b]:
+Starting from the degree-0 top-flat basis written as a difference of two Heaviside
+steps (§1.1), and smoothing each step into H_{n,δ}, the PSP basis on interval [a, b] is:
 
 $$
 \boxed{B^{(n)}_{[a,b],\delta}(x) = H_{n,\delta}(x-a) - H_{n,\delta}(x-b)}
@@ -142,7 +200,7 @@ $$
 \text{flat-top width} = (b-a) - 2\delta \quad \text{(zero when } b-a < 2\delta\text{)}
 $$
 
-This is the key difference from B-splines: a B-spline basis *never* reaches 1 (no flat-top), while a PSP basis equals 1 on a whole interval.  NURBS achieves the same effect but through a rational denominator; PSP achieves it with pure polynomials.
+This is the key difference from B-splines: a B-spline basis *never* reaches 1 (no flat-top), while a PSP basis equals 1 on a whole interval.  NURBS achieves the same effect but through a rational[...]
 
 ### Non-symmetric basis (Eq. 19)
 
@@ -172,7 +230,12 @@ $$
 \quad \text{for } x \in [t_0+\delta,\ t_m-\delta]
 $$
 
-No rational normalization is ever needed.
+No rational normalization is ever needed. Because the partition of unity arises purely
+from this **telescoping** of local step differences — rather than from a global
+denominator $\sum_j w_j N_j(x)$ as in NURBS — each basis function can be evaluated
+**independently and locally**. This is the property that makes PSPS well suited to
+**GPU mesh-shader and tessellation-shader** evaluation (§1.2): no cross-element
+reduction is required to enforce unity.
 
 ---
 
@@ -194,6 +257,11 @@ flat-top is *empty* — this is consistent with B-splines never reaching value 1
 For **non-equal knots**, PSP and B-spline differ: B-spline shape depends on the
 full knot-span configuration; PSP shape depends only on the two endpoint
 smoothing parameters.
+
+This recovers the B-spline directly from the convolution / difference-of-steps
+reconstruction of §1.1, confirming that PSPS is a **natural extension** of the
+B-spline: the classical basis is the special case in which the flat top degenerates to
+a single point.
 
 ---
 
@@ -228,7 +296,10 @@ P(t) = \sum_i P_i(t)\, B^{(n)}_{[t_i,t_{i+1}],\delta}(t)
 $$
 
 Each P_i(t) is reproduced exactly on its flat-top.  Primitives may be
-different mathematical types.
+different mathematical types. This is the **shape-blending** view: rather than
+blending isolated control *points*, whole control *shapes* are blended while each
+retains its identity on its flat top — the feature that distinguishes PSPS from
+NURBS.
 
 ### 7.3 Hermite position + velocity  (Eq. 23)
 
