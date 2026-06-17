@@ -1,37 +1,41 @@
 cff-version: 1.2.0
-message: "If you use this repository, please cite the software and the original Shape Blend Splines paper."
-title: "Shape-Blend-Splines"
+message: "If you use this repository, please cite the original paper."
+title: "Shape-Blend-Splines (PSP Splines Python toolkit)"
 version: "0.1.0"
 type: software
 authors:
   - family-names: "Li"
     given-names: "Q."
+  - family-names: "Tian"
+    given-names: "J."
 license: "MIT"
 repository-code: "https://github.com/QL-UoHull/Shape-Blend-Splines"
 url: "https://github.com/QL-UoHull/Shape-Blend-Splines"
 abstract: >-
-  Python toolkit for experimenting with Shape Blend Splines, global weighted
-  shape blending, interactive Jupyter/Colab demos, and control-point driven
-  spline curves.
+  Python toolkit implementing Partial Shape-Preserving (PSP) splines as
+  described in Li & Tian (2011). PSP splines are B-spline-like, achieve
+  what NURBS achieves (flat-top exact primitive reproduction), are more
+  flexible than NURBS (extra delta dimension, selective interpolation),
+  and are entirely non-rational (weights encoded as knot spacings).
 keywords:
-  - shape blend splines
-  - shape blending
+  - partial shape-preserving splines
+  - PSP splines
   - spline
   - geometric modeling
   - computer-aided design
   - partition of unity
-  - jupyter
-  - colab
+  - flat-top basis
+  - selective interpolation
 preferred-citation:
   type: article
   authors:
     - family-names: "Li"
       given-names: "Q."
-  title: "Shape Blend Splines"
+    - family-names: "Tian"
+      given-names: "J."
+  title: "Partial shape-preserving splines"
   journal: "Computer-Aided Design"
   year: 2011
   volume: 43
-  issue: 8
-  start: 990
-  end: 1001
-  doi: "10.1016/j.cad.2011.01.006"
+  start: 394
+  end: 409

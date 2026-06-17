@@ -1,12 +1,16 @@
 """
-Parametric shape definitions.
+Parametric shape / primitive definitions.
 
-Each function returns a 2-D point array for parameter values t ∈ [0, 1].
+Each function returns a 2-D point array for parameter values t in a given
+range.  These are the *primitives* for Partial Shape-Preserving (PSP) splines:
 
-These simple shapes serve as the *building blocks* for the Shape Blend
-Spline: a complex geometry is constructed by blending several of these
-shapes together using the partition-of-unity weights from
-:mod:`shape_blend_splines.basis`.
+- In :class:`~shape_blend_splines.curve.BlendedPrimitivePSPSpline` (Eq. 22),
+  each primitive is preserved **exactly** on the flat-top of its PSP basis
+  function and blended smoothly across the rising-range bands.
+- In :class:`~shape_blend_splines.curve.WeightedControlPolygonPSPSpline`,
+  control-point positions are the degenerate (constant) case.
+- In :class:`~shape_blend_splines.curve.HermitePSPSpline`, the primitive for
+  node i is the tangent line P_i + (t - t_i)*v_i (Eq. 23).
 
 Shapes included
 ---------------
@@ -17,10 +21,17 @@ Shapes included
 - :func:`rectangle_arc`
 - :func:`polyline`
 - :func:`star_arc`
+- :func:`sine_wave` — sinusoidal primitive for primitive-blending demos
+- :func:`helix_2d` — 2-D projection of a helix / cosine-sine primitive
 - :func:`from_control_points` — cubic Hermite shape from user control points
 
 All functions accept scalar or 1-D array *t* and return an *(m, 2)* array of
 (x, y) coordinates.
+
+Reference
+---------
+Q. Li, J. Tian, "Partial shape-preserving splines",
+Computer-Aided Design 43 (2011) 394-409.  Section 6.2 / Property 6.
 """
 
 from __future__ import annotations
@@ -428,3 +439,80 @@ SHAPE_REGISTRY = {
     "star": star_arc,
     "control_points": from_control_points,
 }
+
+
+# ---------------------------------------------------------------------------
+# Additional primitives for PSP blending demos
+# ---------------------------------------------------------------------------
+
+def sine_wave(
+    t: ArrayLike,
+    x_start: float = 0.0,
+    x_end: float = 2.0 * np.pi,
+    amplitude: float = 1.0,
+    y_offset: float = 0.0,
+) -> np.ndarray:
+    """
+    Sinusoidal primitive for use in :class:`BlendedPrimitivePSPSpline`.
+
+    Parameters
+    ----------
+    t : array-like
+        Parameter values (used as the x coordinate linearly mapped to
+        [x_start, x_end]).
+    x_start, x_end : float
+        Horizontal extent.
+    amplitude : float
+        Peak amplitude.
+    y_offset : float
+        Vertical offset.
+
+    Returns
+    -------
+    np.ndarray, shape (m, 2)
+    """
+    t = _to_param(t)
+    x = x_start + t * (x_end - x_start)
+    y = y_offset + amplitude * np.sin(x)
+    return np.column_stack([x, y])
+
+
+def helix_2d(
+    t: ArrayLike,
+    cx: float = 0.0,
+    cy: float = 0.0,
+    radius: float = 1.0,
+    turns: float = 1.0,
+    t_start: float = 0.0,
+    t_end: float = 1.0,
+) -> np.ndarray:
+    """
+    2-D projection of a helix: (cos, sin) with linearly growing angle.
+
+    Useful as a parametric primitive for :class:`BlendedPrimitivePSPSpline`
+    to demonstrate smooth blending between helical and other geometric shapes
+    (Fig. 12-style).
+
+    Parameters
+    ----------
+    t : array-like
+        Parameter values in [t_start, t_end].
+    cx, cy : float
+        Centre of the helix circle.
+    radius : float
+        Helix radius.
+    turns : float
+        Number of full revolutions over [t_start, t_end].
+    t_start, t_end : float
+        Parameter range.
+
+    Returns
+    -------
+    np.ndarray, shape (m, 2)
+    """
+    t = _to_param(t)
+    fraction = (t - t_start) / max(t_end - t_start, 1e-12)
+    theta = fraction * turns * 2.0 * np.pi
+    x = cx + radius * np.cos(theta)
+    y = cy + radius * np.sin(theta)
+    return np.column_stack([x, y])
