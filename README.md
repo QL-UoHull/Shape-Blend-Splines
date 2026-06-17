@@ -160,7 +160,7 @@ Run these scripts to reproduce the paper's key figures:
 
 ```bash
 python examples/basic_demo.py             # H_n, PSP basis, partition, B-spline case, Fig. 9
-python examples/figure10_nonequal_intervals.py  # Fig. 10: non-equal intervals + square-spiral
+python examples/figure10_nonequal_intervals.py  # Fig. 10: Eq.22 edge-primitive blending (straight edge flat-tops + rounded transitions)
 python examples/figure11_selective_interpolation.py  # Fig. 11: selective interpolation
 python examples/hermite_motion.py         # Eq. 23: Hermite position+velocity
 ```

@@ -577,6 +577,48 @@ class TestBlendedPrimitivePSPSpline:
                 knots=[0, 1, 2], n=3, delta=0.3
             )
 
+    def test_edge_flat_top_is_straight_and_nonstalled(self):
+        """Edge primitive stays collinear and moves along edge on flat-top."""
+        from shape_blend_splines.curve import BlendedPrimitivePSPSpline
+
+        A = np.array([1.0, -0.5])
+        B = np.array([4.0, 2.5])
+
+        def left_prim(t):
+            t = np.atleast_1d(t)
+            return np.column_stack([np.zeros_like(t), np.ones_like(t)])
+
+        def edge_prim(t):
+            t = np.atleast_1d(np.asarray(t, dtype=float))
+            s = np.clip((t - 1.0) / 4.0, 0.0, 1.0)  # interval [1, 5]
+            return (1.0 - s)[:, np.newaxis] * A + s[:, np.newaxis] * B
+
+        def right_prim(t):
+            t = np.atleast_1d(t)
+            return np.column_stack([6.0 * np.ones_like(t), np.ones_like(t)])
+
+        spl = BlendedPrimitivePSPSpline(
+            [left_prim, edge_prim, right_prim],
+            knots=[0.0, 1.0, 5.0, 6.0],
+            n=3,
+            delta=1.0,  # middle flat-top [2,4]
+        )
+
+        t_ft = np.linspace(2.0, 4.0, 30)
+        pts = spl.evaluate(t_ft)
+        chord = B - A
+        rel = pts - A
+        cross = rel[:, 0] * chord[1] - rel[:, 1] * chord[0]
+        np.testing.assert_allclose(cross, 0.0, atol=1e-8)
+
+        # Must move along the edge, not stall at a point.
+        assert np.linalg.norm(pts[-1] - pts[0]) > 1e-3
+
+        # Samples lie on the segment A--B.
+        lam = (rel @ chord) / (chord @ chord)
+        assert np.all(lam >= -1e-10)
+        assert np.all(lam <= 1.0 + 1e-10)
+
 
 # ---------------------------------------------------------------------------
 # HermitePSPSpline (Eq. 23)

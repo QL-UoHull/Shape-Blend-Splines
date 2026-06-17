@@ -36,6 +36,8 @@ Computer-Aided Design 43 (2011) 394-409.  Section 6.2 / Property 6.
 
 from __future__ import annotations
 
+from typing import Callable
+
 import numpy as np
 from numpy.typing import ArrayLike
 
@@ -48,6 +50,62 @@ def _to_param(t: ArrayLike) -> np.ndarray:
     """Ensure *t* is a 1-D float array."""
     t = np.atleast_1d(np.asarray(t, dtype=float))
     return t
+
+
+def closed_polygon_edges(
+    vertices: ArrayLike,
+    knots: ArrayLike | None = None,
+) -> list[Callable[[ArrayLike], np.ndarray]]:
+    """
+    Return callable edge primitives for a closed polygon.
+
+    Edge ``i`` maps local ``s in [0,1]`` to
+    ``(1-s)*V_i + s*V_{(i+1) mod k}``, but each returned callable accepts the
+    global parameter ``t`` and normalizes it over that edge's knot interval
+    ``[t_i, t_{i+1}]``.
+
+    Parameters
+    ----------
+    vertices:
+        Polygon vertices of shape ``(k, 2)``.
+    knots:
+        Knot vector of length ``k+1`` defining the edge intervals.
+        If omitted, unit intervals ``[0,1], [1,2], ...`` are used.
+    """
+    verts = np.asarray(vertices, dtype=float)
+    if verts.ndim != 2 or len(verts) < 3:
+        raise ValueError("vertices must have shape (k, d) with k >= 3.")
+
+    k = len(verts)
+    if knots is None:
+        knot_arr = np.arange(k + 1, dtype=float)
+    else:
+        knot_arr = np.asarray(knots, dtype=float)
+        if len(knot_arr) != k + 1:
+            raise ValueError("len(knots) must equal len(vertices)+1.")
+    if np.any(np.diff(knot_arr) <= 0):
+        raise ValueError("knots must be strictly increasing.")
+
+    period = float(knot_arr[-1] - knot_arr[0])
+    edges: list[Callable[[ArrayLike], np.ndarray]] = []
+    for i in range(k):
+        p0 = verts[i]
+        p1 = verts[(i + 1) % k]
+        a = float(knot_arr[i])
+        b = float(knot_arr[i + 1])
+        span = b - a
+
+        def _edge(t, p0=p0, p1=p1, a=a, span=span, period=period):
+            tt = _to_param(t)
+            # For periodic blends, map to the equivalent local interval.
+            c = a + 0.5 * span
+            local_t = tt - np.round((tt - c) / period) * period if period > 0 else tt
+            s = np.clip((local_t - a) / span, 0.0, 1.0)
+            return (1.0 - s)[:, np.newaxis] * p0 + s[:, np.newaxis] * p1
+
+        edges.append(_edge)
+
+    return edges
 
 
 # ---------------------------------------------------------------------------
