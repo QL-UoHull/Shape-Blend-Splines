@@ -28,8 +28,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from shape_blend_splines.curve import WeightedControlPolygonPSPSpline
-from shape_blend_splines.basis import psp_partition
+from shape_blend_splines.curve import WeightedControlPolygonPSPSpline, PeriodicPSPSpline
+from shape_blend_splines.basis import psp_partition, knots_from_weights
 
 OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -74,7 +74,8 @@ def demo_nonequal_intervals():
 
     fig, axes = plt.subplots(1, 4, figsize=(16, 4.5))
     for ax, (w, title) in zip(axes, configs):
-        spl = WeightedControlPolygonPSPSpline(ctrl, weights=w, n=n, delta=delta)
+        knots = knots_from_weights(np.asarray(w))
+        spl = PeriodicPSPSpline(ctrl, knots=knots, n=n, delta=delta)
         t = np.linspace(spl.knots[0], spl.knots[-1], 600)
         pts = spl.evaluate(t)
 
@@ -90,8 +91,9 @@ def demo_nonequal_intervals():
                     )
 
         ax.plot(pts[:, 0], pts[:, 1], color="steelblue", lw=2.2)
-        ax.plot(ctrl[:, 0], ctrl[:, 1], "o--", color="tomato",
-                lw=1.0, ms=5, alpha=0.7)
+        ax.plot(np.append(ctrl[:, 0], ctrl[0, 0]),
+                np.append(ctrl[:, 1], ctrl[0, 1]),
+                "o--", color="tomato", lw=1.0, ms=5, alpha=0.7)
         ax.set_aspect("equal")
         ax.set_title(title, fontsize=9)
         ax.grid(alpha=0.15)
@@ -142,8 +144,9 @@ def demo_square_spiral():
         if lw is None:
             # Delta sweep
             for delta_v, c in zip([0.2, 0.5, 0.9], ["navy", "steelblue", "lightblue"]):
-                spl = WeightedControlPolygonPSPSpline(
-                    ctrl, weights=weights_corner_emphasis, n=n, delta=delta_v
+                knots = knots_from_weights(weights_corner_emphasis)
+                spl = PeriodicPSPSpline(
+                    ctrl, knots=knots, n=n, delta=delta_v
                 )
                 t = np.linspace(spl.knots[0], spl.knots[-1], 600)
                 pts = spl.evaluate(t)
@@ -153,7 +156,8 @@ def demo_square_spiral():
             )
             ax.legend(fontsize=8)
         else:
-            spl = WeightedControlPolygonPSPSpline(ctrl, weights=w, n=n, delta=delta)
+            knots = knots_from_weights(np.asarray(w))
+            spl = PeriodicPSPSpline(ctrl, knots=knots, n=n, delta=delta)
             t = np.linspace(spl.knots[0], spl.knots[-1], 600)
             pts = spl.evaluate(t)
             # Shade flat-tops
@@ -166,8 +170,9 @@ def demo_square_spiral():
                                         color="gold", alpha=0.5, linewidth=0)
             ax.plot(pts[:, 0], pts[:, 1], color=lw, lw=2.2)
             ax.set_title(title)
-        ax.plot(ctrl[:, 0], ctrl[:, 1], "o--", color="gray",
-                lw=0.9, ms=5, alpha=0.5)
+        ax.plot(np.append(ctrl[:, 0], ctrl[0, 0]),
+                np.append(ctrl[:, 1], ctrl[0, 1]),
+                "o--", color="gray", lw=0.9, ms=5, alpha=0.5)
         ax.set_aspect("equal")
         ax.grid(alpha=0.15)
         ax.set_xlabel("x")
