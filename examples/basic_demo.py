@@ -33,7 +33,7 @@ from shape_blend_splines.basis import (
     knots_from_weights,
     bspline_basis,
 )
-from shape_blend_splines.curve import WeightedControlPolygonPSPSpline
+from shape_blend_splines.curve import WeightedControlPolygonPSPSpline, PeriodicPSPSpline
 
 OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -196,8 +196,9 @@ def demo_fig9():
     delta = 0.25
     n = 3
     for w, lbl, c in weight_sets:
-        spl = WeightedControlPolygonPSPSpline(ctrl, weights=w, n=n, delta=delta)
-        t = np.linspace(spl.knots[0] + delta, spl.knots[-1] - delta, 500)
+        knots = knots_from_weights(np.asarray(w))
+        spl = PeriodicPSPSpline(ctrl, knots=knots, n=n, delta=delta)
+        t = np.linspace(spl.knots[0], spl.knots[-1], 500)
         pts = spl.evaluate(t)
         ax.plot(pts[:, 0], pts[:, 1], color=c, lw=2.0, label=lbl)
 
@@ -214,8 +215,9 @@ def demo_fig9():
 
     w_fixed = [2, 1, 1, 1, 2, 1, 1, 1]
     for delta_v, c in zip([0.1, 0.25, 0.5, 0.9], ["navy", "royalblue", "steelblue", "lightskyblue"]):
-        spl = WeightedControlPolygonPSPSpline(ctrl, weights=w_fixed, n=n, delta=delta_v)
-        t = np.linspace(spl.knots[0] + delta_v, spl.knots[-1] - delta_v, 500)
+        knots = knots_from_weights(np.asarray(w_fixed))
+        spl = PeriodicPSPSpline(ctrl, knots=knots, n=n, delta=delta_v)
+        t = np.linspace(spl.knots[0], spl.knots[-1], 500)
         pts = spl.evaluate(t)
         ax.plot(pts[:, 0], pts[:, 1], color=c, lw=2.0, label=rf"$\delta={delta_v}$")
 
